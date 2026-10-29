@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { api, ApiError } from '../lib/api';
 import { usd, ugx } from '../lib/format';
 import { whatsappUrl } from '../lib/contact';
@@ -30,6 +30,7 @@ type Errors = Record<string, string>;
  */
 export function ShopPage() {
   const navigate = useNavigate();
+  const [params] = useSearchParams();
   const { notify } = useToast();
   const bag = useBag();
 
@@ -55,6 +56,19 @@ export function ShopPage() {
       cancelled = true;
     };
   }, []);
+
+  // A shelf card on the landing page can point at one record: /shop?record=badman
+  const wanted = params.get('record');
+  useEffect(() => {
+    if (!shop || !wanted) return;
+    const target = document.getElementById(wanted);
+    if (!target) return;
+    const timer = window.setTimeout(
+      () => target.scrollIntoView({ behavior: 'smooth', block: 'center' }),
+      120,
+    );
+    return () => window.clearTimeout(timer);
+  }, [shop, wanted]);
 
   const delivery: ShopDeliveryOption | undefined = useMemo(
     () => shop?.delivery.find((option) => option.id === deliveryId),
@@ -221,7 +235,9 @@ export function ShopPage() {
               const inBag = bag.quantityOf(release.id);
               return (
                 <Reveal key={release.id} delay={index * 50}>
-                  <article className="flex h-full flex-col overflow-hidden rounded-2xl border border-white/[0.09] bg-white/[0.02] p-3.5 transition-colors hover:border-lime/30">
+                  <article
+                    id={release.id}
+                    className="flex h-full scroll-mt-24 flex-col overflow-hidden rounded-2xl border border-white/[0.09] bg-white/[0.02] p-3.5 transition-colors hover:border-lime/30">
                     <div className="relative overflow-hidden rounded-xl bg-black/30">
                       <VinylMockup
                         vinylTypeId={release.formatId}
