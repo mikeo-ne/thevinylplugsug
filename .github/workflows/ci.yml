@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main, 'arena/**']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - name: Serverless handler checks (Vercel entry point)
+        run: npm run test:serverless
+
+      - name: Start production server
+        run: |
+          PORT=4173 NODE_ENV=production node server/index.js > /tmp/7h-server.log 2>&1 &
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:4173/api/health > /dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/7h-server.log
+          exit 1
+
+      - name: Route smoke test
+        run: node scripts/smoke.mjs
+
+      - name: End-to-end order flow
+        run: node scripts/flow.mjs
+
+      - name: Upload server log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-log
+          path: /tmp/7h-server.log
+          if-no-files-found: ignore

@@ -1,0 +1,9 @@
+data/
+uploads/
+dist/
+scripts/
+node_modules/
+.git/
+*.log
+.env
+.env.local
