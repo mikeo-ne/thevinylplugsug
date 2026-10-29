@@ -90,7 +90,7 @@ export function VinylSamples() {
                   <div className="mt-2.5 flex items-center justify-between gap-2 border-t border-white/[0.06] pt-2.5">
                     <span className="text-[10px] uppercase tracking-[0.12em] text-muted">In the shop</span>
                     <Link
-                      to="/shop"
+                      to={`/shop?record=${item.art}`}
                       className="flex items-center gap-1 text-[11.5px] font-medium text-lime transition-opacity hover:opacity-80"
                     >
                       Buy this record
