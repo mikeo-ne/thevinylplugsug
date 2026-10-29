@@ -12,23 +12,28 @@
     "typecheck": "tsc --noEmit",
     "test:smoke": "node scripts/smoke.mjs",
     "test:flow": "node scripts/flow.mjs",
-    "test": "npm run typecheck && npm run test:serverless && npm run test:notifications && npm run test:automation && npm run test:shop && npm run test:pricing && npm run test:smoke && npm run test:flow",
+    "test": "npm run typecheck && npm run test:serverless && npm run test:notifications && npm run test:db && npm run test:alerts && npm run test:automation && npm run test:shop && npm run test:pricing && npm run test:smoke && npm run test:flow",
     "test:serverless": "node scripts/serverless-check.mjs",
     "test:notifications": "node scripts/notifications-check.mjs",
     "og-image": "bash scripts/build-og-image.sh public/og-image.png",
     "test:e2e": "node scripts/e2e-live.mjs",
     "test:automation": "node scripts/automation-check.mjs",
     "test:pricing": "node scripts/pricing-check.mjs",
-    "test:shop": "node scripts/shop-check.mjs"
+    "test:shop": "node scripts/shop-check.mjs",
+    "test:db": "node scripts/database-check.mjs",
+    "test:alerts": "node scripts/alerts-check.mjs",
+    "db:migrate": "node scripts/db-migrate.mjs"
   },
   "dependencies": {
     "express": "^4.21.2",
     "multer": "^2.5.0",
+    "pg": "^8.23.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.30.6"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.2.17",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^6.1.2",

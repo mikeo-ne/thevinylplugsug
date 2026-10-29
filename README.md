@@ -44,7 +44,14 @@ Copy `.env.example` if you want to override defaults locally.
 | `ADMIN_PASSCODE`  | built-in demo code | Access code for the operations console — set your own before sharing the link |
 | `SESSION_SECRET`  | derived     | Signs stateless admin tokens — set in production |
 | `MAX_UPLOAD_MB`   | `80` (`4` on Vercel) | Per-file upload cap advertised to the client |
-| `DATA_DIR`        | `./data`    | JSON store location (`/tmp/7h-data` on Vercel)  |
+| `DATABASE_URL`    | —           | Postgres (Neon/Supabase/Vercel). **Set this in production** — without it orders live in `/tmp` |
+| `KV_REST_API_URL` + `KV_REST_API_TOKEN` | — | Upstash Redis / Vercel KV, if you prefer Redis to Postgres |
+| `CRON_SECRET`     | —           | Enables the daily `vercel.json` cron that retries failed alerts |
+| `RESEND_API_KEY`  | —           | Real email alerts and buyer receipts (unset = simulated) |
+| `NOTIFY_EMAIL_TO` | `CONTACT_EMAIL` | Who receives desk alerts (comma-separated)   |
+| `WHATSAPP_TOKEN` + `WHATSAPP_PHONE_ID` + `NOTIFY_WHATSAPP_TO` | — | Real WhatsApp alerts |
+| `SLACK_WEBHOOK_URL` / `NOTIFY_WEBHOOK_URL` | — | Slack or a single automation endpoint |
+| `DATA_DIR`        | `./data`    | Fallback JSON store when no database is configured |
 | `UPLOAD_DIR`      | `./uploads` | Upload location (`/tmp/7h-uploads` on Vercel)   |
 
 ## Deploy to Vercel
@@ -136,8 +143,9 @@ The other door: fans buying records that already exist, one copy at a time.
   **mark paid**, status changes, WhatsApp/email shortcuts, and stock editing (cancelling an order
   returns its records).
 
-Stock is checked and decremented in the same synchronous pass that accepts an order, so the last
-copy cannot be sold twice — a stale page that tries it gets a `409 out_of_stock` naming the record.
+Stock is claimed with a conditional `UPDATE … WHERE stock >= n` in the database (an atomic `HINCRBY`
+when Redis is the store), so the last copy cannot be sold twice — a stale page that tries it gets a
+`409 out_of_stock` naming the record.
 
 ### 6. Operations console (`/admin`, code from `ADMIN_PASSCODE`)
 
@@ -147,6 +155,10 @@ per IP lock the endpoint for ten minutes.
 - Order list with filters + detail panel: client, package, money, downloadable file links.
 - Actions: **mark deposit paid**, **forward to Mobineko / Green Lakes**, change status, copy the
   plant payload.
+- **System panel** — which database driver is live (and whether it survives a deploy), row counts and
+  latency; every alert channel with the exact variables it is missing; **Send test alert** (a real
+  call, with the provider's own answer printed beside each channel) and **Retry failed** for the
+  outbox.
 - **Webhook alert log** — automatically fires on every order to Slack, email, WhatsApp and plant
   intake, with delivery states, retries, a manual “test alert”, and a demo reset. The console polls
   every six seconds while the tab is visible. Each channel shows `LIVE` or `SIM`, and until real
@@ -163,6 +175,11 @@ per IP lock the endpoint for ten minutes.
 | POST   | `/api/quote`                       | Authoritative server-side quote                 |
 | POST   | `/api/orders`                      | Create order (+ emits webhook fan-out)          |
 | GET    | `/api/orders/:id`                  | Client-facing order status + alert feed         |
+| GET    | `/api/health`                      | Database driver, latency, row counts, alert readiness |
+| GET    | `/api/admin/system`                | Database + alert diagnostics (auth)             |
+| POST   | `/api/admin/alerts/test`           | Send a real test on every channel (auth)        |
+| POST   | `/api/admin/alerts/retry`          | Re-send every failed alert (auth)               |
+| GET    | `/api/cron/alerts`                 | Retry sweep for Vercel cron (`CRON_SECRET`)     |
 | GET    | `/api/shop`                        | Shop catalogue, live stock, delivery options    |
 | POST   | `/api/shop/orders`                 | Buy records (+ decrements stock, alerts desk)   |
 | GET    | `/api/shop/orders/:id`             | A fan's own order, by its reference             |
@@ -287,6 +304,8 @@ scripts/serverless-check.mjs # boots api/index.js with VERCEL=1 and checks the e
 ```
 npm run typecheck          # tsc --noEmit
 npm run test:serverless    # self-contained: boots the Vercel handler on an isolated /tmp store
+npm run test:db            # Postgres (PGlite) + Redis drivers: schema, diffing, atomic stock
+npm run test:alerts        # every alert channel against a local sink, incl. failures and retries
 npm run test:notifications # real-delivery harness: simulated → live → failed → retry → fan-out
 npm run test:shop          # shop: catalogue, checkout, stock, oversell, admin, cancellation
 node scripts/smoke.mjs     # route render smoke test (needs the app on :4173)
@@ -297,7 +316,11 @@ npm test                   # typecheck + every suite
 
 ## Notes
 
-- Shop stock lives in the same JSON store as production orders, so it is per-instance on Vercel
+- Everything the app stores — pressing orders, shop orders, uploads metadata, the alert log and the
+  shop's stock counters — goes through `server/store.js` to a driver picked at boot: Postgres when
+  `DATABASE_URL` is set, Redis when the KV variables are, otherwise a local JSON file. The console's
+  **System** panel and `/api/health` always say which one is live.
+- Shop stock lives in the same store as production orders, so it is per-instance on Vercel
   (see [Deployment → limits](./DEPLOYMENT.md#3-what-happens-on-vercel-and-its-limits)). A sale
   always emails the desk immediately, so no order is ever lost with the instance.
 - Payments are **simulated**: no PSP is called. Deposits and shop payments are confirmed manually in

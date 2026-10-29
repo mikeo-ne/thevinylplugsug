@@ -2,10 +2,12 @@ import type {
   AdminOverview,
   AdminShop,
   AdminShopOrder,
+  AlertTestResult,
   CompanyConfig,
   Order,
   ShopConfig,
   ShopOrder,
+  SystemHealth,
   UploadedFile,
   WebhookEvent,
 } from '../types';
@@ -137,6 +139,20 @@ export const api = {
     request<{ order: ShopOrder }>(`/api/shop/orders/${encodeURIComponent(id)}`),
 
   adminShop: () => request<AdminShop>('/api/admin/shop'),
+
+  adminSystem: () => request<SystemHealth>('/api/admin/system'),
+
+  adminTestAlerts: (channels?: string[]) =>
+    request<{ results: AlertTestResult[] }>('/api/admin/alerts/test', {
+      method: 'POST',
+      body: JSON.stringify({ channels }),
+    }),
+
+  adminRetryAlerts: () =>
+    request<{ summary: { attempted: number; delivered: number; failed: number }; outbox: SystemHealth['alerts']['outbox'] }>(
+      '/api/admin/alerts/retry',
+      { method: 'POST' },
+    ),
 
   adminUpdateShopOrder: (id: string, body: { status?: string; paymentStatus?: string; note?: string }) =>
     request<{ order: AdminShopOrder }>(`/api/admin/shop/orders/${encodeURIComponent(id)}`, {

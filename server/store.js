@@ -4,6 +4,8 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { calculateQuote } from '../shared/pricing.js';
 import { COMPANY } from './config.js';
+import { createDriver } from './db/index.js';
+import { clone, emptyDoc, normalizeDoc } from './db/document.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const ROOT_DIR = path.resolve(__dirname, '..');
@@ -19,19 +21,23 @@ export const UPLOAD_DIR = process.env.UPLOAD_DIR
 
 const DB_FILE = path.join(DATA_DIR, 'db.json');
 
-const emptyDb = () => ({
-  version: 1,
-  createdAt: new Date().toISOString(),
-  orders: [],
-  events: [],
-  uploads: [],
-  // The retail shop: live stock counts plus fan orders. Kept apart from the
-  // production orders so neither pipeline can ever be confused for the other.
-  shop: { stock: {}, orders: [] },
+const emptyDb = () => emptyDoc();
+
+// The driver decides where this document actually lives: Postgres, Redis, or a
+// file beside the app. It is created once per process and reused across warm
+// invocations, which is what makes the connection pool worth having.
+const driver = createDriver({
+  file: DB_FILE,
+  dataDir: DATA_DIR,
+  overrides: globalThis.__7H_DB_OVERRIDES__ ?? {},
 });
 
 let db = null;
+let lastSaved = null;
+let booting = null;
 let writeChain = Promise.resolve();
+let lastReloadAt = 0;
+const RELOAD_INTERVAL_MS = Number(process.env.STORE_RELOAD_MS ?? 2500);
 
 export function ensureDirs() {
   fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -215,54 +221,151 @@ function seedDemo(db) {
     },
   ];
 
-  return { ...db, orders, uploads, events };
+  return normalizeDoc({ ...db, orders, uploads, events });
 }
 
-function load() {
-  ensureDirs();
-  if (db) return db;
-  try {
-    if (fs.existsSync(DB_FILE)) {
-      const parsed = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
-      db = { ...emptyDb(), ...parsed };
-      // A store written before the shop existed still opens cleanly.
-      if (!db.shop || typeof db.shop !== 'object') db.shop = { stock: {}, orders: [] };
-      if (!Array.isArray(db.shop.orders)) db.shop.orders = [];
-      if (!db.shop.stock || typeof db.shop.stock !== 'object') db.shop.stock = {};
-      return db;
-    }
-  } catch (error) {
-    console.warn('[store] Could not read db.json, starting fresh.', error.message);
+/**
+ * Boot the store.
+ *
+ * Loads the document from the driver (or seeds it the first time), and only
+ * resolves once that has happened — every route awaits this through the
+ * middleware in app.js, so no handler ever sees a half-initialised store.
+ */
+async function boot() {
+  await driver.init();
+  const stored = await driver.load();
+  if (stored) {
+    db = stored;
+  } else {
+    db = seedDemo(emptyDb());
+    await driver.save(null, db);
   }
-  db = seedDemo(emptyDb());
-  persist();
+  lastSaved = clone(db);
+  lastReloadAt = Date.now();
+  return db;
+}
+
+export function storeReady() {
+  if (!db) {
+    booting = booting ?? boot();
+    return booting;
+  }
+  return Promise.resolve(db);
+}
+
+/** The document. Synchronous on purpose: every route already assumes that. */
+function load() {
+  if (!db) {
+    throw new Error('The store is not ready yet — call storeReady() before reading db_.data');
+  }
   return db;
 }
 
 function persist() {
-  const snapshot = JSON.stringify(db, null, 2);
-  writeChain = writeChain.then(async () => {
-    try {
-      const tmp = `${DB_FILE}.tmp`;
-      await fs.promises.writeFile(tmp, snapshot, 'utf8');
-      await fs.promises.rename(tmp, DB_FILE);
-    } catch (error) {
-      console.warn('[store] Could not persist db.json (running in memory):', error.message);
-    }
-  });
+  const next = load();
+  const snapshot = clone(next);
+  const previous = lastSaved;
+  lastSaved = snapshot;
+
+  writeChain = writeChain
+    .then(() => driver.save(previous, snapshot))
+    .catch((error) => {
+      // Put the document back so the next save retries the same change rather
+      // than silently losing it.
+      lastSaved = previous;
+      console.warn(`[store] Could not save to ${driver.name}:`, error.message);
+    });
   return writeChain;
+}
+
+/**
+ * Pull a fresh copy from the database.
+ *
+ * Two lambdas can serve two fans at once, so a warm instance's copy can drift.
+ * Throttled: at most once every RELOAD_INTERVAL_MS (default 2.5s), which is
+ * invisible to a user reading the shop and cheap for the database.
+ */
+export async function refreshStore({ force = false, canReload = true } = {}) {
+  if (!db) await storeReady();
+  if (!driver.persistent) return false;
+  // Never swap the document under a request that is mid-write: the route may be
+  // holding a reference to an order it is about to save.
+  if (!canReload) return false;
+  const now = Date.now();
+  if (!force && now - lastReloadAt < RELOAD_INTERVAL_MS) return false;
+  await writeChain.catch(() => {});
+  lastReloadAt = now;
+  try {
+    const fresh = await driver.load();
+    if (fresh) {
+      db = fresh;
+      lastSaved = clone(fresh);
+    }
+    return true;
+  } catch (error) {
+    console.warn(`[store] Could not refresh from ${driver.name}:`, error.message);
+    return false;
+  }
 }
 
 export const db_ = {
   get data() {
     return load();
   },
+  get driver() {
+    return { name: driver.name, label: driver.label, persistent: driver.persistent };
+  },
   save() {
     return persist();
   },
-  reset() {
+  ready() {
+    return storeReady();
+  },
+  refresh(options) {
+    return refreshStore(options);
+  },
+  /** Ours to make atomic: only the database can promise this across instances. */
+  async reserve(lines) {
+    const doc = load();
+    if (!doc.shop) doc.shop = { stock: {}, orders: [] };
+    const result = await driver.reserve(lines);
+    if (result.ok && result.stock) {
+      // Trust the database's numbers, not ours.
+      Object.assign(doc.shop.stock, result.stock);
+      if (lastSaved?.shop) Object.assign(lastSaved.shop.stock, result.stock);
+    }
+    return result;
+  },
+  async setStock(releaseId, value) {
+    const doc = load();
+    doc.shop.stock[releaseId] = value;
+    if (lastSaved?.shop) lastSaved.shop.stock[releaseId] = value;
+    await driver.setStock(releaseId, value);
+    return value;
+  },
+  async health() {
+    const health = await driver.health();
+    return {
+      ...health,
+      ready: Boolean(db),
+      counts: health.counts ?? {
+        orders: db?.orders.length ?? 0,
+        shopOrders: db?.shop?.orders?.length ?? 0,
+        events: db?.events.length ?? 0,
+        uploads: db?.uploads.length ?? 0,
+      },
+    };
+  },
+  async reset() {
     db = seedDemo(emptyDb());
+    lastSaved = null;
+    await driver.reset(db);
+    lastSaved = clone(db);
     return persist();
+  },
+  async close() {
+    await writeChain.catch(() => {});
+    await driver.close();
   },
 };
 
