@@ -87,6 +87,35 @@ async function postJson(url, body, headers = {}) {
   }
 }
 
+/**
+ * GET a bot/providor endpoint and parse the JSON answer.
+ *
+ * Telegram answers `200 {ok:false, description}` for a rejected call just as it
+ * does for a good one, so `ok` is checked rather than the status code alone.
+ */
+async function getJson(url, headers = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
+  try {
+    const response = await fetch(url, { headers, signal: controller.signal });
+    const body = await response.text().catch(() => '');
+    let parsed = null;
+    try {
+      parsed = JSON.parse(body);
+    } catch {
+      parsed = null;
+    }
+    if (!response.ok || parsed?.ok === false) {
+      throw new Error(
+        parsed?.description ?? `HTTP ${response.status}${body ? ` — ${body.slice(0, 180)}` : ''}`,
+      );
+    }
+    return { httpStatus: response.status, data: parsed };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 const paymentLabel = (methodId) =>
   PAYMENT_METHODS.find((method) => method.id === methodId)?.name ?? methodId;
 
@@ -414,6 +443,59 @@ async function telegramSend(text) {
     results.push({ chat, httpStatus: result.httpStatus });
   }
   return { chats: chats.length, results };
+}
+
+/**
+ * "Which chat id am I?" — the step everyone gets stuck on.
+ *
+ * The chat id is not printed anywhere in Telegram's UI, and the documented route
+ * is to open a JSON URL by hand. So the console asks the Bot API instead: press
+ * Start on the bot, send it anything, and this returns the id to paste into
+ * TELEGRAM_CHAT_ID. Admin-gated, and it never returns the token.
+ */
+export async function telegramDiscoverChats() {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  if (!token) {
+    return { status: 'unconfigured', chats: [], error: 'TELEGRAM_BOT_TOKEN is not set' };
+  }
+
+  try {
+    const me = await getJson(`${telegramApi()}/bot${token}/getMe`);
+    const updates = await getJson(
+      `${telegramApi()}/bot${token}/getUpdates?limit=100&allowed_updates=%5B%22message%22%2C%22my_chat_member%22%2C%22channel_post%22%5D`,
+    );
+
+    const seen = new Map();
+    for (const update of updates.data?.result ?? []) {
+      const chat = update.message?.chat ?? update.my_chat_member?.chat ?? update.channel_post?.chat;
+      if (!chat?.id || seen.has(String(chat.id))) continue;
+      seen.set(String(chat.id), {
+        id: String(chat.id),
+        type: chat.type ?? 'private',
+        title:
+          chat.title ??
+          [chat.first_name, chat.last_name].filter(Boolean).join(' ') ??
+          null,
+        username: chat.username ? `@${chat.username}` : null,
+      });
+    }
+
+    const chats = [...seen.values()];
+    return {
+      status: 'ok',
+      bot: me.data?.result?.username ? `@${me.data.result.username}` : null,
+      chats,
+      hint: chats.length
+        ? null
+        : 'Open the bot in Telegram, press Start, send it any message, then press this again.',
+    };
+  } catch (error) {
+    return {
+      status: 'error',
+      chats: [],
+      error: error?.name === 'AbortError' ? 'Telegram timed out' : error.message,
+    };
+  }
 }
 
 async function deliverTelegram(order) {

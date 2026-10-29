@@ -41,7 +41,12 @@ import {
   shopOrderView,
   updateShopOrder,
 } from './shop.js';
-import { alertEnvCheck, notificationConfig, sendTestAlerts } from './notifications.js';
+import {
+  alertEnvCheck,
+  notificationConfig,
+  sendTestAlerts,
+  telegramDiscoverChats,
+} from './notifications.js';
 import { currentUgxRate, getRates } from './rates.js';
 import { BASE_CURRENCY, DISPLAY_CURRENCIES } from '../shared/currency.js';
 import { db_, ensureDirs, newOrderId, newId, refreshStore, storeReady, UPLOAD_DIR } from './store.js';
@@ -891,10 +896,20 @@ api.get('/api/admin/system', requireAdmin, async (_req, res) => {
   });
 });
 
+/**
+ * "Which chat id am I?" for the Telegram rail.
+ *
+ * Admin-gated: this calls the Bot API with the configured token, so it must never
+ * be public — it returns the chats that have spoken to the bot, never the token.
+ */
+api.get('/api/admin/telegram/chats', requireAdmin, async (_req, res) => {
+  res.json(await telegramDiscoverChats());
+});
+
 /** Send a real test on every configured channel and report what came back. */
 api.post('/api/admin/alerts/test', requireAdmin, async (req, res) => {
   const requested = Array.isArray(req.body?.channels) ? req.body.channels : null;
-  const allowed = ['email', 'whatsapp', 'slack', 'webhook'];
+  const allowed = ['email', 'telegram', 'whatsapp', 'slack', 'webhook'];
   const channels = requested ? requested.filter((channel) => allowed.includes(channel)) : allowed;
   const results = await sendTestAlerts(channels);
 

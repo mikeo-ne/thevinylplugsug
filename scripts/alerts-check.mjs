@@ -99,6 +99,34 @@ const sink = http.createServer((req, res) => {
       return;
     }
 
+    if (/^\/bot[^/]+\/getUpdates/.test(url)) {
+      const token = url.split('/')[1].replace(/^bot/, '');
+      if (token !== 'test-token') {
+        res
+          .writeHead(401, { 'content-type': 'application/json' })
+          .end(JSON.stringify({ ok: false, error_code: 401, description: 'Unauthorized' }));
+        return;
+      }
+      res.writeHead(200, { 'content-type': 'application/json' }).end(
+        JSON.stringify({
+          ok: true,
+          result: [
+            { update_id: 1, message: { chat: { id: 768261003, type: 'private', first_name: 'Mike' } } },
+            { update_id: 2, message: { chat: { id: 768261003, type: 'private', first_name: 'Mike' } } },
+            { update_id: 3, message: { chat: { id: -1001234567890, type: 'supergroup', title: '7H Orders' } } },
+          ],
+        }),
+      );
+      return;
+    }
+
+    if (/^\/bot[^/]+\/getMe$/.test(url)) {
+      res
+        .writeHead(200, { 'content-type': 'application/json' })
+        .end(JSON.stringify({ ok: true, result: { id: 9277737371, username: 'Vinylplugug_bot' } }));
+      return;
+    }
+
     if (url.startsWith('/slack')) {
       received.slack.push(json);
       res.writeHead(200, { 'content-type': 'text/plain' }).end('ok');
@@ -144,7 +172,9 @@ process.env.NOTIFY_WEBHOOK_URL = `${SINK}/webhook`;
 process.env.CRON_SECRET = 'cron_test_secret';
 process.env.PUBLIC_BASE_URL = 'https://7h.test';
 
-const { alertEnvCheck, sendTestAlert, sendTestAlerts } = await import('../server/notifications.js');
+const { alertEnvCheck, sendTestAlert, sendTestAlerts, telegramDiscoverChats } = await import(
+  '../server/notifications.js'
+);
 const { db_, storeReady } = await import('../server/store.js');
 const { retryFailedAlerts, alertOutboxSummary } = await import('../server/webhooks.js');
 
@@ -210,6 +240,31 @@ check(
 );
 check('telegram renders HTML, not literal tags', received.telegram[0]?.body?.parse_mode === 'HTML');
 check('the bot token is never echoed in the report', !String(telegramResult.target ?? '').includes('test-token'));
+
+const discovered = await telegramDiscoverChats();
+check('chat discovery reaches the bot', discovered.status === 'ok', discovered.error);
+check('it names the bot', discovered.bot === '@Vinylplugug_bot', String(discovered.bot));
+check('it returns the chats that messaged the bot', discovered.chats.length === 2, String(discovered.chats.length));
+check(
+  'duplicate updates collapse to one chat',
+  discovered.chats.filter((chat) => chat.id === '768261003').length === 1,
+);
+check(
+  'a group is listed with its title and negative id',
+  discovered.chats.some((chat) => chat.id === '-1001234567890' && chat.title === '7H Orders'),
+);
+check('a DM is listed by name', discovered.chats.some((chat) => chat.title === 'Mike'));
+check('the token never comes back', !JSON.stringify(discovered).includes('test-token'));
+
+const noBot = await (async () => {
+  const saved = process.env.TELEGRAM_BOT_TOKEN;
+  delete process.env.TELEGRAM_BOT_TOKEN;
+  const result = await telegramDiscoverChats();
+  process.env.TELEGRAM_BOT_TOKEN = saved;
+  return result;
+})();
+check('without a token the lookup says so', noBot.status === 'unconfigured', noBot.status);
+check('…and names the missing variable', /TELEGRAM_BOT_TOKEN/.test(noBot.error ?? ''), noBot.error);
 
 const slackResult = await sendTestAlert('slack');
 check('slack test is delivered', slackResult.status === 'delivered', slackResult.error);

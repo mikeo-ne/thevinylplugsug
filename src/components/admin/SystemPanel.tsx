@@ -3,7 +3,7 @@ import { api, ApiError } from '../../lib/api';
 import { dateTime } from '../../lib/format';
 import { Icon } from '../ui/Icon';
 import { useToast } from '../ui/Toast';
-import type { AlertTestResult, SystemHealth } from '../../types';
+import type { AlertTestResult, SystemHealth, TelegramChats } from '../../types';
 
 const CHANNEL_LABEL: Record<string, string> = {
   email: 'Email',
@@ -38,6 +38,8 @@ export function SystemPanel() {
   const [testing, setTesting] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const [results, setResults] = useState<AlertTestResult[] | null>(null);
+  const [telegram, setTelegram] = useState<TelegramChats | null>(null);
+  const [findingChats, setFindingChats] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -52,6 +54,37 @@ export function SystemPanel() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  /**
+   * "Which chat id am I?" — Telegram never shows it in the app, and the manual
+   * route is to open a JSON URL. This asks the bot directly and hands back the
+   * ids to paste into TELEGRAM_CHAT_ID.
+   */
+  const findChats = async () => {
+    setFindingChats(true);
+    try {
+      const found = await api.adminTelegramChats();
+      setTelegram(found);
+      if (found.status === 'ok' && found.chats.length > 0) {
+        notify(`${found.chats.length} chat${found.chats.length === 1 ? '' : 's'} found.`, 'success');
+      } else if (found.status === 'error') {
+        notify(found.error ?? 'Telegram refused the lookup.', 'error');
+      }
+    } catch (error) {
+      notify(error instanceof ApiError ? error.message : 'Could not reach the Bot API.', 'error');
+    } finally {
+      setFindingChats(false);
+    }
+  };
+
+  const copyChat = async (id: string) => {
+    try {
+      await navigator.clipboard.writeText(id);
+      notify(`Copied ${id}.`, 'success');
+    } catch {
+      notify('Copy failed — select the id by hand.', 'error');
+    }
+  };
 
   const sendTests = async () => {
     setTesting(true);
@@ -217,6 +250,60 @@ export function SystemPanel() {
                       missing {channelEnv.missing.join(', ')}
                     </p>
                   ) : null}
+
+                  {channel.channel === 'telegram' && (
+                    <div className="mt-1.5">
+                      <button
+                        type="button"
+                        onClick={() => void findChats()}
+                        disabled={findingChats}
+                        className="flex items-center gap-1 text-[9.5px] uppercase tracking-[0.12em] text-muted transition-colors hover:text-bone disabled:opacity-40"
+                      >
+                        <Icon name={findingChats ? 'spinner' : 'search'} size={10} className={findingChats ? 'animate-spin' : ''} />
+                        Find chat id
+                      </button>
+
+                      {telegram && (
+                        <div className="mt-1.5 rounded-md border border-white/[0.07] bg-black/20 px-2 py-1.5">
+                          {telegram.status === 'ok' && telegram.chats.length > 0 ? (
+                            <>
+                              <p className="text-[9.5px] text-muted">
+                                {telegram.bot ?? 'The bot'} has heard from:
+                              </p>
+                              <ul className="mt-1 space-y-1">
+                                {telegram.chats.map((chat) => (
+                                  <li key={chat.id} className="flex items-center justify-between gap-2">
+                                    <span className="min-w-0 truncate text-[10px] text-bone/85">
+                                      {chat.title ?? chat.type}
+                                      {chat.username ? ` · ${chat.username}` : ''}
+                                    </span>
+                                    <span className="flex shrink-0 items-center gap-1">
+                                      <code className="font-mono text-[10px] text-lime">{chat.id}</code>
+                                      <button
+                                        type="button"
+                                        onClick={() => void copyChat(chat.id)}
+                                        title={`Copy ${chat.id}`}
+                                        className="text-muted transition-colors hover:text-bone"
+                                      >
+                                        <Icon name="copy" size={10} />
+                                      </button>
+                                    </span>
+                                  </li>
+                                ))}
+                              </ul>
+                              <p className="mt-1 text-[9px] leading-relaxed text-muted/80">
+                                Paste it into TELEGRAM_CHAT_ID in Vercel, then redeploy.
+                              </p>
+                            </>
+                          ) : (
+                            <p className="text-[9.5px] leading-relaxed text-amber-200/80">
+                              {telegram.error ?? telegram.hint ?? 'No chats yet.'}
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {result && (
                     <p

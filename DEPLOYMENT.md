@@ -173,8 +173,11 @@ desk that just needs the order on a phone, this is the rail to set up first.
 
 1. Install Telegram, message **@BotFather** → `/newbot` → name it (`7H Orders`) → copy the token.
 2. Open your new bot and press **Start** (a bot cannot message someone who never started it).
-3. Read your chat id: `https://api.telegram.org/bot<TOKEN>/getUpdates` → `result[0].message.chat.id`.
-   A group id is negative (`-100…`) — add the bot to the group and read it the same way.
+3. Read your chat id. Either `https://api.telegram.org/bot<TOKEN>/getUpdates` →
+   `result[0].message.chat.id`, or — easier — set `TELEGRAM_BOT_TOKEN` first and press **Find chat
+   id** under the Telegram row in **Console → System**. It asks the Bot API and lists every chat that
+   has messaged the bot, with a copy button. A group id is negative (`-100…`); add the bot to the
+   group first.
 4. Vercel → Settings → Environment Variables: `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`.
    Several destinations are fine, comma separated: a DM *and* a group, for instance.
 5. Console → **System → Send test alert** — a green Telegram line means the phone buzzes.
