@@ -20,6 +20,7 @@ const CHANNELS = {
   slack: { label: 'Slack', icon: 'hash', delay: 900, autoDeliver: true },
   email: { label: 'Email', icon: 'mail', delay: 1600, autoDeliver: true },
   whatsapp: { label: 'WhatsApp', icon: 'chat', delay: 2600, autoDeliver: true },
+  telegram: { label: 'Telegram', icon: 'send', delay: 2000, autoDeliver: true },
   plant: { label: 'Pressing plant', icon: 'factory', delay: 0, autoDeliver: false },
 };
 
@@ -274,6 +275,12 @@ export async function emitOrderEvents(order) {
     }),
     makeEvent({
       orderId: order.id,
+      channel: 'telegram',
+      target: 'Telegram · management desk',
+      message: `Telegram alert queued — ${order.id} needs deposit verification before plant hand-off.`,
+    }),
+    makeEvent({
+      orderId: order.id,
       channel: 'plant',
       target: `${plantName} · production intake`,
       message: `Awaiting management release — forward master + artwork links to ${plantName}.`,
@@ -334,6 +341,13 @@ export async function emitShopOrderEvents(order) {
       channel: 'whatsapp',
       target: `${COMPANY.phone} (Management)`,
       message: `WhatsApp alert queued — ${order.id} needs payment confirmed before packing.`,
+    }),
+    makeEvent({
+      orderId: order.id,
+      channel: 'telegram',
+      target: 'Telegram · management desk',
+      message: `Telegram alert queued — ${order.id} needs payment confirmed before packing.`,
+      payload: { orderId: order.id, retail: true },
     }),
     makeEvent({
       orderId: order.id,

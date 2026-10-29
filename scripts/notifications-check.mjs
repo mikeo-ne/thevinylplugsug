@@ -149,6 +149,40 @@ try {
   );
   check(emailEvent?.mode === 'simulated', 'unconfigured channels stay simulated alongside live ones');
 
+  /* ---------- 2b. live Telegram bot ---------- */
+  process.env.TELEGRAM_API_BASE = SINK;
+  process.env.TELEGRAM_BOT_TOKEN = 'notify-token';
+  process.env.TELEGRAM_CHAT_ID = '768261003';
+
+  received.length = 0;
+  const tg = await post('/api/orders', order('Telegram Run'));
+  const tgId = tg.body.order?.id;
+  const tgPost = received.find((entry) => entry.path === '/botnotify-token/sendMessage');
+
+  check(Boolean(tgPost), 'Telegram bot received the order');
+  check(tgPost?.body?.chat_id === '768261003', 'sent to the configured chat', String(tgPost?.body?.chat_id));
+  check(tgPost?.body?.parse_mode === 'HTML', 'sent as Telegram HTML');
+  const tgText = String(tgPost?.body?.text ?? '');
+  check(tgText.includes(tgId), 'the message carries the order reference');
+  check(tgText.includes('Telegram Run'), 'and the artist name');
+  check(tgText.includes('Recipient Name') && tgText.includes('Kira Road'), 'and the full ship-to address');
+  check(tgText.includes('Kampala'), 'including the city');
+  check(/nothing reaches .* until you do\./.test(tgText), 'the deposit gate is stated in the message', tgText.slice(-120));
+
+  const tgOverview = await get('/api/admin/overview', auth);
+  const tgEvent = tgOverview.body.events.find(
+    (event) => event.orderId === tgId && event.channel === 'telegram',
+  );
+  check(tgEvent?.status === 'delivered' && tgEvent?.mode === 'live', 'Telegram event recorded as delivered + live');
+  const tgChannel = tgOverview.body.channels.find((channel) => channel.channel === 'telegram');
+  check(tgChannel?.live === true, 'the console lists Telegram as live');
+
+  // A bot that was blocked or never started returns 200 with ok:false — that must
+  // not be booked as a delivery.
+  delete process.env.TELEGRAM_API_BASE;
+  delete process.env.TELEGRAM_BOT_TOKEN;
+  delete process.env.TELEGRAM_CHAT_ID;
+
   /* ---------- 3. failing endpoint → failed, never fake-delivered ---------- */
   process.env.SLACK_WEBHOOK_URL = 'http://127.0.0.1:9/dead';
 
