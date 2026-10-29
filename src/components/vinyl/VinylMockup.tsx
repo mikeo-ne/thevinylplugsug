@@ -50,7 +50,9 @@ export function VinylMockup({
   const jacketH = jacketW;
   const jacketX = isSingle ? 46 : 38;
   const jacketY = 150 - jacketH / 2;
-  const recordR = isSingle ? 71 : 104;
+  // The record is slightly smaller than its sleeve — 300mm in a 312mm jacket,
+  // 175mm in a 185mm 7" sleeve — so the disc never pokes past the board.
+  const recordR = Math.round(jacketW * 0.48);
   const recordCx = jacketX + jacketW + (isSingle ? 34 : 26);
   const recordCy = isSingle ? 154 : 150;
   const labelR = isSingle ? 26 : 34;
