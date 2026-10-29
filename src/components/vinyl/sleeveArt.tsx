@@ -144,10 +144,10 @@ function NileBeatArt({ uid, design, compact }: ArtProps) {
         <circle cx="126" cy="206" r="9" />
         <circle cx="148" cy="208" r="9" />
       </g>
-      <text x="150" y="112" textAnchor="middle" {...type} fontWeight="700" fontSize="34" letterSpacing="-1.2" fill={design.ink}>
+      <text x="150" y="112" textAnchor="middle" {...type} fontWeight="700" fontSize={compact ? 22 : 34} letterSpacing="-1.2" fill={design.ink}>
         NILE
       </text>
-      <text x="150" y="140" textAnchor="middle" {...type} fontWeight="700" fontSize="34" letterSpacing="-1.2" fill={design.ink}>
+      <text x="150" y="140" textAnchor="middle" {...type} fontWeight="700" fontSize={compact ? 22 : 34} letterSpacing="-1.2" fill={design.ink}>
         BEAT
       </text>
       {!compact && (
@@ -194,7 +194,7 @@ function AmakaArt({ uid, design, compact }: ArtProps) {
       <rect x="0" y="0" width="300" height="300" fill="#0C2A20" opacity="0.72" />
       <circle cx="150" cy="142" r="62" fill="none" stroke="#E3A81F" strokeWidth="2" />
       <circle cx="150" cy="142" r="52" fill="none" stroke="#E3A81F" strokeWidth="0.8" opacity="0.7" />
-      <text x="150" y="150" textAnchor="middle" {...type} fontWeight="700" fontSize="30" letterSpacing="2" fill={design.ink}>
+      <text x="150" y="150" textAnchor="middle" {...type} fontWeight="700" fontSize={compact ? 20 : 30} letterSpacing="2" fill={design.ink}>
         AMAKA
       </text>
       {!compact && (
@@ -230,10 +230,10 @@ function EkitibwaArt({ uid, design, compact }: ArtProps) {
       </g>
       <rect x="22" y="22" width="256" height="256" fill="none" stroke="#F0D9B5" strokeWidth="1" opacity="0.5" />
       <rect x="30" y="30" width="240" height="240" fill="none" stroke="#F0D9B5" strokeWidth="0.5" opacity="0.3" />
-      <text x="150" y="126" textAnchor="middle" {...type} fontWeight="700" fontSize="42" letterSpacing="-1.6" fill={design.ink}>
+      <text x="150" y="126" textAnchor="middle" {...type} fontWeight="700" fontSize={compact ? 26 : 42} letterSpacing="-1.6" fill={design.ink}>
         EKI
       </text>
-      <text x="150" y="166" textAnchor="middle" {...type} fontWeight="700" fontSize="42" letterSpacing="-1.6" fill={design.ink}>
+      <text x="150" y="166" textAnchor="middle" {...type} fontWeight="700" fontSize={compact ? 26 : 42} letterSpacing="-1.6" fill={design.ink}>
         TIBWA
       </text>
       <path d="M96 184 h108" stroke="#F0D9B5" strokeWidth="1.4" opacity="0.8" />
@@ -274,10 +274,10 @@ function EmizannyoArt({ uid, design, compact }: ArtProps) {
         fill={`url(#${uid}-em-figure)`}
       />
       <rect x="20" y="196" width="120" height="2" fill="#22E0C8" opacity="0.7" />
-      <text x="22" y="72" {...type} fontWeight="700" fontSize="30" letterSpacing="-1" fill={design.ink}>
+      <text x="22" y="72" {...type} fontWeight="700" fontSize={compact ? 20 : 30} letterSpacing="-1" fill={design.ink}>
         EMIZ
       </text>
-      <text x="22" y="102" {...type} fontWeight="700" fontSize="30" letterSpacing="-1" fill="#22E0C8">
+      <text x="22" y="102" {...type} fontWeight="700" fontSize={compact ? 20 : 30} letterSpacing="-1" fill="#22E0C8">
         ANYO
       </text>
       {!compact && (
@@ -320,7 +320,7 @@ function NalubaaleArt({ uid, design, compact }: ArtProps) {
       ))}
       <circle cx="150" cy="118" r="30" fill="#F2E2B8" opacity="0.9" />
       <path d="M120 214 h60" stroke="#F2E2B8" strokeWidth="1" opacity="0.5" />
-      <text x="150" y="72" textAnchor="middle" {...type} fontWeight="700" fontSize="27" letterSpacing="1.2" fill={design.ink}>
+      <text x="150" y="72" textAnchor="middle" {...type} fontWeight="700" fontSize={compact ? 17 : 27} letterSpacing="1.2" fill={design.ink}>
         NALUBAALE
       </text>
       {!compact && (
@@ -355,7 +355,7 @@ function NseneneArt({ uid, design, compact }: ArtProps) {
       </g>
       <circle cx="150" cy="150" r="64" fill="#120B24" stroke="#E9A13B" strokeWidth="2" />
       <circle cx="150" cy="150" r="56" fill="none" stroke="#E9A13B" strokeWidth="0.6" opacity="0.6" />
-      <text x="150" y="144" textAnchor="middle" {...type} fontWeight="700" fontSize="24" letterSpacing="0.6" fill={design.ink}>
+      <text x="150" y="144" textAnchor="middle" {...type} fontWeight="700" fontSize={compact ? 15 : 24} letterSpacing="0.6" fill={design.ink}>
         NSENENE
       </text>
       <text x="150" y="164" textAnchor="middle" {...mono} fontSize="6.5" letterSpacing="2.6" fill="#E9A13B">
