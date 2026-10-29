@@ -72,16 +72,19 @@ and a failed hand-off shows as `failed` in the console with a one-click retry.
 | --- | --- | --- |
 | `PLANT_MOBINEKO_EMAIL` | `web@mobineko.com` | Where Mobineko order requests go (published inbox — replace with your account rep once one is assigned) |
 | `PLANT_GREENLAKES_EMAIL` | `hi@greenlakespressing.com` | Where Green Lakes order requests go (customer-service inbox — replace with your account rep once one is assigned) |
-| `PLANT_SEABASS_EMAIL` | — | Seabass Vinyl (UK, MOQ 50). Unset = the console shows the hand-off as needing an address |
-| `PLANT_DRDUB_EMAIL` | — | Dr. Dub (AT, lathe cuts, MOQ 1) |
-| `PLANT_GZMEDIA_EMAIL` | — | GZ Media (CZ, MOQ 250) |
-| `PLANT_DEEPGROOVES_EMAIL` | — | Deepgrooves (NL, MOQ 100) |
+| `PLANT_SEABASS_EMAIL` | `7hmusicgroupug@gmail.com` | Seabass Vinyl (UK, MOQ 50). Currently the desk inbox — swap for the rep's address when assigned |
+| `PLANT_DRDUB_EMAIL` | `7hmusicgroupug@gmail.com` | Dr. Dub (AT, lathe cuts, MOQ 1). Desk inbox until a rep is assigned |
+| `PLANT_GZMEDIA_EMAIL` | `7hmusicgroupug@gmail.com` | GZ Media (CZ, MOQ 250). Desk inbox until a rep is assigned |
+| `PLANT_DEEPGROOVES_EMAIL` | `7hmusicgroupug@gmail.com` | Deepgrooves (NL, MOQ 100). Desk inbox until a rep is assigned |
 | `PLANT_ORDERS_EMAIL` | — | Catch-all used when a plant has no address of its own |
 | `PLANT_AUTO_FORWARD` | `true` (default) | `false` restores the manual "Forward" button |
 | `PLANT_FORWARD_ON_ORDER` | `false` (default) | `true` releases on submission, before the deposit |
 | `PLANT_WEBHOOK_URL` | — | Optional JSON endpoint, used in addition to email |
 
-The desk is BCC'd on every plant email, so a plant's reply always has a home.
+The desk is BCC'd on every plant email, so a plant's reply always has a home. When a plant's order
+inbox *is* the desk inbox (the current state for Seabass, Dr. Dub, GZ Media and Deepgrooves) that
+BCC is skipped — one mailbox, one copy — and the console flags it as routing to the desk. The
+subject line names the plant, so a single inbox can still triage which job is whose.
 
 ### Run sizes and the plant panel
 

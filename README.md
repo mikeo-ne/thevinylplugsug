@@ -209,7 +209,7 @@ delivers only when its variables are present; otherwise it stays `simulated` and
 | WhatsApp | `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_ID`, `NOTIFY_WHATSAPP_TO` | Meta Cloud API; recipient must be opted in |
 | Umbrella webhook | `NOTIFY_WEBHOOK_URL` | One JSON POST per channel — Zapier / Make / n8n / your bot |
 | Plant forwarding | `PLANT_WEBHOOK_URL` (+ `PLANT_WEBHOOK_PLANT`, `PUBLIC_BASE_URL`) | Enables the admin “Forward to plant” action |
-| Plant inboxes | `PLANT_MOBINEKO_EMAIL`, `PLANT_GREENLAKES_EMAIL`, `PLANT_SEABASS_EMAIL`, `PLANT_DRDUB_EMAIL`, `PLANT_GZMEDIA_EMAIL`, `PLANT_DEEPGROOVES_EMAIL` | Where each plant's spec sheet is emailed after a deposit |
+| Plant inboxes | `PLANT_MOBINEKO_EMAIL`, `PLANT_GREENLAKES_EMAIL`, `PLANT_SEABASS_EMAIL`, `PLANT_DRDUB_EMAIL`, `PLANT_GZMEDIA_EMAIL`, `PLANT_DEEPGROOVES_EMAIL` | Where each plant's spec sheet is emailed after a deposit. Plants without a rep inbox point at `7hmusicgroupug@gmail.com` until one is assigned; the desk BCC is skipped when the addresses match |
 
 Everything is optional — the app runs, and demos cleanly, with none of it set.
 

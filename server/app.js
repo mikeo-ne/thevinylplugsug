@@ -32,6 +32,7 @@ import {
   SESSION_TTL,
 } from './config.js';
 import { issueToken, requireAdmin } from './auth.js';
+import { notificationConfig } from './notifications.js';
 import { db_, ensureDirs, newOrderId, newId, UPLOAD_DIR } from './store.js';
 import {
   automationConfig,
@@ -545,6 +546,14 @@ api.get('/api/admin/overview', requireAdmin, (_req, res) => {
         moq: plant.moq,
         leadTime: plant.leadTime,
         ordersEmail: plant.ordersEmail ?? null,
+        // True while a plant's order inbox is really the desk forwarding inbox.
+        aliasesDesk: Boolean(
+          plant.ordersEmail &&
+            notificationConfig().emailTo
+              .split(',')
+              .map((address) => address.trim().toLowerCase())
+              .includes(plant.ordersEmail.toLowerCase()),
+        ),
       })),
     },
   });

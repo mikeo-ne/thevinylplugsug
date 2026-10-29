@@ -301,6 +301,8 @@ export interface AdminOverview {
       moq?: number;
       leadTime?: string;
       ordersEmail: string | null;
+      /** The plant inbox is really the desk forwarder while no rep is assigned. */
+      aliasesDesk?: boolean;
     }[];
   };
 }
