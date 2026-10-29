@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { DraftConfiguration, DraftFiles, DraftPayment, ClientDetails } from '../types';
-import { DEFAULT_CONFIGURATION, quoteFor } from '../lib/pricing';
+import { DEFAULT_CONFIGURATION, defaultPlantId, plantSupportsQuantity, plants, quoteFor } from '../lib/pricing';
 import { useConfig } from '../hooks/useConfig';
 
 const STORAGE_KEY = '7h-draft-v1';
@@ -20,6 +20,14 @@ const emptyClient: ClientDetails = {
 
 const emptyPayment: DraftPayment = { method: 'mtn_momo', payerPhone: '', payerName: '' };
 
+/** Cheapest plant on the panel that will quote this run size. */
+function pickPlantFor(quantity: number): string {
+  const eligible = plants
+    .filter((plant) => plantSupportsQuantity(plant, quantity))
+    .sort((a, b) => a.priceFactor - b.priceFactor);
+  return eligible[0]?.id ?? defaultPlantId;
+}
+
 interface DraftState {
   configuration: DraftConfiguration;
   client: ClientDetails;
@@ -35,7 +43,7 @@ const initialState: DraftState = {
   files: emptyFiles,
   payment: emptyPayment,
   termsAccepted: false,
-  plantPreference: 'mobineko',
+  plantPreference: defaultPlantId,
 };
 
 interface DraftContextValue extends DraftState {
@@ -63,7 +71,7 @@ function readDraft(): DraftState {
       files: { ...emptyFiles, ...parsed.files, audioLink: parsed.files?.audioLink ?? '', artworkLink: parsed.files?.artworkLink ?? '' },
       payment: { ...emptyPayment, ...parsed.payment },
       termsAccepted: Boolean(parsed.termsAccepted),
-      plantPreference: parsed.plantPreference ?? 'mobineko',
+      plantPreference: parsed.plantPreference ?? defaultPlantId,
     };
   } catch {
     return initialState;
@@ -87,7 +95,19 @@ export function DraftProvider({ children }: { children: React.ReactNode }) {
 
   const setConfiguration = useCallback(
     (patch: Partial<DraftConfiguration>) =>
-      setState((prev) => ({ ...prev, configuration: { ...prev.configuration, ...patch } })),
+      setState((prev) => {
+        const configuration = { ...prev.configuration, ...patch };
+        // A plant that cannot take the new run size would produce an invalid
+        // quote, so move to the cheapest plant that will (e.g. 250 → 1 unit
+        // hands the job to the lathe house).
+        const plantPreference = plantSupportsQuantity(
+          plants.find((plant) => plant.id === prev.plantPreference),
+          configuration.quantity,
+        )
+          ? prev.plantPreference
+          : pickPlantFor(configuration.quantity);
+        return { ...prev, configuration, plantPreference };
+      }),
     [],
   );
 
@@ -110,7 +130,12 @@ export function DraftProvider({ children }: { children: React.ReactNode }) {
 
   const setTerms = useCallback((value: boolean) => setState((prev) => ({ ...prev, termsAccepted: value })), []);
   const setPlantPreference = useCallback(
-    (value: string) => setState((prev) => ({ ...prev, plantPreference: value })),
+    (value: string) =>
+      setState((prev) => ({
+        ...prev,
+        plantPreference: value,
+        configuration: { ...prev.configuration, plantId: value },
+      })),
     [],
   );
 
@@ -124,7 +149,10 @@ export function DraftProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const fxRate = config?.fxRate ?? 3750;
-  const quote = useMemo(() => quoteFor(state.configuration, fxRate), [state.configuration, fxRate]);
+  const quote = useMemo(
+    () => quoteFor(state.configuration, fxRate, state.plantPreference),
+    [state.configuration, fxRate, state.plantPreference],
+  );
 
   const value = useMemo<DraftContextValue>(
     () => ({

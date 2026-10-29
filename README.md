@@ -76,19 +76,29 @@ npx vercel link && npx vercel --prod
 - Ticker, four-step process, pressing-partner cards, audience grid, FAQ accordion, closing CTA.
 
 ### 2. Quote configurator (`/#configurator`)
-- Quantity: **100 / 250 / 500**
+- Quantity ladder: **1** (lathe cut) · **25** (micro-run) · **50** (boutique) · **100** · **250** ·
+  **500** · **1,000** (plant run)
 - Format: **12" LP Standard**, **12" Colored**, **7" Single**
 - Packaging: **Standard Jacket**, **Gatefold**, **Printed Inner Sleeve**
-- Live maths (animated): pressing + sleeve upgrade + factory setup → **Total factory cost** →
-  **7H management fee @ 25%** → **Turnkey total** shown in **USD and UGX**, with the **50% deposit**
-  and balance. Volume-savings hint is derived from the same engine.
+- Plant / supplier: **Mobineko** (MOQ 25), **Green Lakes Pressing** (100), **Seabass Vinyl** (50),
+  **Dr. Dub** (1, lathe), **GZ Media** (250), **Deepgrooves** (100). The dropdown disables any plant
+  that cannot take the current run, and changing the quantity moves the order to the cheapest plant
+  that can.
+- Live maths (animated): pressing + sleeve upgrade + factory setup + plant rate card → **Total
+  factory cost** → **7H management fee @ 25%** → **Turnkey total** in **USD and UGX**, with the
+  **50% deposit** and balance. The "move up a tier" hint is derived from the same engine.
 
 ```
-factory  = qty × unit(format) + qty × unit(sleeve) + format setup fee
+unit     = format rate at that run size (falls with volume: $45/ea at 1 → $4.35/ea at 1,000)
+factory  = qty × unit(format) + qty × unit(sleeve) + setup(format, qty) + plant rate adjustment
 fee      = factory × 25%
 total    = factory + fee
 deposit  = total × 50%
 ```
+
+Per-unit prices, MOQs and rate cards live in one place — `shared/pricing.js` — so the browser, the
+API and the plant hand-off always quote the same numbers. `npm run test:pricing` asserts the ladder
+is monotonic, that 25 units lands on $14.50/ea and a 1-of-1 on $45.00/ea, and that MOQs are enforced.
 
 ### 3. Client order & file portal (`/order`)
 Four steps with validation and a sticky live summary:
@@ -199,6 +209,7 @@ delivers only when its variables are present; otherwise it stays `simulated` and
 | WhatsApp | `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_ID`, `NOTIFY_WHATSAPP_TO` | Meta Cloud API; recipient must be opted in |
 | Umbrella webhook | `NOTIFY_WEBHOOK_URL` | One JSON POST per channel — Zapier / Make / n8n / your bot |
 | Plant forwarding | `PLANT_WEBHOOK_URL` (+ `PLANT_WEBHOOK_PLANT`, `PUBLIC_BASE_URL`) | Enables the admin “Forward to plant” action |
+| Plant inboxes | `PLANT_MOBINEKO_EMAIL`, `PLANT_GREENLAKES_EMAIL`, `PLANT_SEABASS_EMAIL`, `PLANT_DRDUB_EMAIL`, `PLANT_GZMEDIA_EMAIL`, `PLANT_DEEPGROOVES_EMAIL` | Where each plant's spec sheet is emailed after a deposit |
 
 Everything is optional — the app runs, and demos cleanly, with none of it set.
 

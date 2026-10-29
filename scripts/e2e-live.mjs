@@ -80,12 +80,22 @@ step('Catalogue and quote math (configurator)');
 const config = await json('/api/config');
 check(config.res.ok, 'GET /api/config', `status ${config.res.status}`);
 const cfg = config.body;
-check(Array.isArray(cfg?.quantities) && cfg.quantities.length === 3, 'three quantity tiers', String(cfg?.quantities));
+check(
+  Array.isArray(cfg?.quantities) && cfg.quantities.length === 7,
+  'seven quantity tiers (1 → 1,000)',
+  String(cfg?.quantities),
+);
+check(
+  Array.isArray(cfg?.plants) && cfg.plants.length === 6,
+  'six pressing plants on the panel',
+  String(cfg?.plants?.length),
+);
 check(cfg?.managementFeeRate === 0.25, 'management fee is 25%', String(cfg?.managementFeeRate));
 check(cfg?.depositRate === 0.5, 'deposit is 50%', String(cfg?.depositRate));
 
 const quoteReq = {
   quantity: 250,
+  plantId: 'mobineko',
   vinylTypeId: cfg.vinylTypes[1].id,
   sleeveId: cfg.sleeves[1].id,
 };

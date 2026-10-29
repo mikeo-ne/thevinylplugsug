@@ -4,8 +4,7 @@ import { Icon } from '../ui/Icon';
 import { useConfig } from '../../hooks/useConfig';
 
 export function OrderSummary({ onEdit }: { onEdit?: (step: number) => void }) {
-  const { quote, client, files, plantPreference } = useDraft();
-  const { config } = useConfig();
+  const { quote, client, files } = useDraft();
 
   const hasFiles = files.audio.length + files.artwork.length > 0;
 
@@ -49,7 +48,10 @@ export function OrderSummary({ onEdit }: { onEdit?: (step: number) => void }) {
         <div className="flex items-start justify-between gap-3">
           <span className="text-muted">Plant</span>
           <span className="text-right text-bone">
-            {config.plants.find((plant) => plant.id === plantPreference)?.name ?? 'Mobineko'}
+            {quote.plant.name}
+            <span className="mt-0.5 block text-[11px] text-muted">
+              MOQ {quote.plant.moq} · {quote.plant.leadTime}
+            </span>
           </span>
         </div>
         <div className="flex items-start justify-between gap-3">

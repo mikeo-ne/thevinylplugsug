@@ -16,7 +16,9 @@ import {
   VINYL_TYPES,
   SLEEVE_OPTIONS,
   QUANTITIES,
+  QUANTITY_TIERS,
   PRESSING_PLANTS,
+  DEFAULT_PLANT_ID,
   MANAGEMENT_FEE_RATE,
   DEPOSIT_RATE,
 } from '../shared/pricing.js';
@@ -180,6 +182,8 @@ api.get('/api/config', (_req, res) => {
     managementFeeRate: MANAGEMENT_FEE_RATE,
     depositRate: DEPOSIT_RATE,
     quantities: QUANTITIES,
+    quantityTiers: QUANTITY_TIERS,
+    defaultPlantId: DEFAULT_PLANT_ID,
     vinylTypes: VINYL_TYPES,
     sleeves: SLEEVE_OPTIONS,
     paymentMethods: PAYMENT_METHODS,
@@ -194,11 +198,12 @@ api.get('/api/config', (_req, res) => {
 });
 
 api.post('/api/quote', (req, res) => {
-  const { quantity, vinylTypeId, sleeveId } = req.body ?? {};
+  const { quantity, vinylTypeId, sleeveId, plantId } = req.body ?? {};
   const quote = calculateQuote({
     quantity,
     vinylTypeId,
     sleeveId,
+    plantId,
     fxRate: FX_UGX_PER_USD,
   });
   if (!quote.valid) return res.status(400).json({ error: quote.errors[0], errors: quote.errors });
@@ -245,10 +250,14 @@ api.post('/api/orders', async (req, res) => {
   const payment = body.payment ?? {};
   const uploadIds = body.uploads ?? {};
 
+  const requestedPlant = PRESSING_PLANTS.some((plant) => plant.id === body.plantPreference)
+    ? body.plantPreference
+    : configuration.plantId;
   const quote = calculateQuote({
     quantity: configuration.quantity,
     vinylTypeId: configuration.vinylTypeId,
     sleeveId: configuration.sleeveId,
+    plantId: requestedPlant,
     fxRate: FX_UGX_PER_USD,
   });
   if (!quote.valid) return res.status(400).json({ error: quote.errors[0] });
@@ -320,10 +329,12 @@ api.post('/api/orders', async (req, res) => {
       quantity: quote.quantity,
       vinylTypeId: configuration.vinylTypeId,
       sleeveId: configuration.sleeveId,
+      plantId: quote.plant.id,
     },
     quote: {
       vinylType: quote.vinylType,
       sleeve: quote.sleeve,
+      plant: quote.plant,
       factoryCost: quote.factoryCost,
       managementFee: quote.managementFee,
       total: quote.total,
@@ -341,9 +352,7 @@ api.post('/api/orders', async (req, res) => {
       status: payment.method === 'card_bank' ? 'awaiting_deposit' : 'processing',
       reference: payment.method === 'card_bank' ? null : `${payment.method === 'mtn_momo' ? 'MOMO' : 'AIRTEL'}-${Math.floor(Math.random() * 900000 + 100000)}`,
     },
-    plantPreference: PRESSING_PLANTS.some((plant) => plant.id === body.plantPreference)
-      ? body.plantPreference
-      : 'mobineko',
+    plantPreference: quote.plant.id,
     files: {
       audio: audioFiles,
       artwork: artworkFiles,
@@ -532,6 +541,9 @@ api.get('/api/admin/overview', requireAdmin, (_req, res) => {
       plants: PRESSING_PLANTS.map((plant) => ({
         id: plant.id,
         name: plant.name,
+        region: plant.region,
+        moq: plant.moq,
+        leadTime: plant.leadTime,
         ordersEmail: plant.ordersEmail ?? null,
       })),
     },

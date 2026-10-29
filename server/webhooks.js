@@ -35,6 +35,8 @@ export const deliveryLabel = (client) =>
 /** Human-readable payload management forwards to the overseas pressing plant. */
 export function buildPlantPayload(order) {
   const config = describeConfiguration(order.configuration);
+  const plant =
+    PRESSING_PLANTS.find((item) => item.id === (order.configuration?.plantId ?? order.plantPreference)) ?? null;
   const files = [...(order.files?.audio ?? []), ...(order.files?.artwork ?? [])].map((file) => ({
     role: file.kind,
     filename: file.originalName,
@@ -62,7 +64,9 @@ export function buildPlantPayload(order) {
       quantity: config.quantity,
       format: config.vinyl,
       packaging: config.sleeve,
-      turnaround: config.turnaround,
+      turnaround: plant?.leadTime ?? config.turnaround,
+      plant: plant ? `${plant.name} — ${plant.region}` : config.plant,
+      plantMinimumRun: plant?.moq ?? null,
     },
     masterAndArtwork: files,
     commercial: {

@@ -36,8 +36,8 @@ const guarantees = [
   },
   {
     icon: 'globe' as const,
-    title: 'One broker, two continents',
-    body: 'We negotiate directly with Mobineko and Green Lakes, consolidate freight, and clear customs — you deal with one invoice and one WhatsApp thread.',
+    title: 'One broker, six plants',
+    body: 'We negotiate directly with six plants across Europe and Asia, consolidate freight, and clear customs — you deal with one invoice and one WhatsApp thread.',
   },
   {
     icon: 'truck' as const,
