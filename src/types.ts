@@ -196,12 +196,15 @@ export interface WebhookEvent {
   id: string;
   orderId: string;
   channel: 'slack' | 'email' | 'whatsapp' | 'plant' | string;
+  mode?: 'live' | 'simulated';
   target: string;
   status: string;
   attempts: number;
   httpStatus: number | null;
   createdAt: string;
   deliveredAt?: string;
+  lastAttemptAt?: string;
+  error?: string | null;
   message: string;
   payload?: unknown;
 }
@@ -226,5 +229,18 @@ export interface AdminOverview {
     paymentMethods: PaymentMethod[];
   };
   plants: Plant[];
-  channels: { channel: string; label: string; icon: string; delay: number; autoDeliver: boolean }[];
+  channels: {
+    channel: string;
+    label: string;
+    icon: string;
+    delay: number;
+    autoDeliver: boolean;
+    live?: boolean;
+    mode?: 'live' | 'simulated';
+    detail?: string;
+  }[];
+  notifications?: {
+    configured: boolean;
+    channels: { channel: string; live: boolean; detail: string }[];
+  };
 }

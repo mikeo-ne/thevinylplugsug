@@ -198,6 +198,23 @@ export function AdminPage() {
           </div>
         </div>
 
+        {overview && !overview.notifications?.configured && (
+          <div className="mb-5 rounded-xl border border-amber-400/25 bg-amber-400/[0.06] px-4 py-3.5">
+            <div className="flex flex-wrap items-center gap-2 text-[12px] font-medium text-amber-200">
+              <Icon name="bolt" size={14} />
+              Alerts are simulated — nothing is actually sent yet
+            </div>
+            <p className="mt-1.5 text-[11.5px] leading-relaxed text-amber-100/70">
+              Add <code className="rounded bg-black/40 px-1 py-0.5 font-mono text-[10.5px]">SLACK_WEBHOOK_URL</code>,{' '}
+              <code className="rounded bg-black/40 px-1 py-0.5 font-mono text-[10.5px]">RESEND_API_KEY</code> or{' '}
+              <code className="rounded bg-black/40 px-1 py-0.5 font-mono text-[10.5px]">WHATSAPP_TOKEN</code> in
+              Vercel → Settings → Environment Variables, or one{' '}
+              <code className="rounded bg-black/40 px-1 py-0.5 font-mono text-[10.5px]">NOTIFY_WEBHOOK_URL</code> for
+              everything. Full setup: <span className="text-amber-100">DEPLOYMENT.md → Notifications</span>.
+            </p>
+          </div>
+        )}
+
         {error && (
           <div className="mb-5 flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-500/[0.07] px-4 py-3 text-[12px] text-red-200">
             <Icon name="alert" size={14} />
@@ -504,18 +521,34 @@ export function AdminPage() {
               <span className="rounded-full border border-white/10 px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-muted">
                 {overview?.events.length ?? 0} events
               </span>
+              <span
+                className={`rounded-full border px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider ${
+                  overview?.notifications?.configured
+                    ? 'border-lime/30 bg-lime/[0.08] text-lime'
+                    : 'border-amber-400/30 bg-amber-400/[0.08] text-amber-200'
+                }`}
+              >
+                {overview?.notifications?.configured ? 'live delivery' : 'simulated'}
+              </span>
             </div>
             <div className="flex flex-wrap items-center gap-3 text-[10px] uppercase tracking-[0.12em] text-muted">
               {(overview?.channels ?? []).map((channel) => (
-                <span key={channel.channel} className="flex items-center gap-1.5">
+                <span
+                  key={channel.channel}
+                  title={channel.detail ?? ''}
+                  className={`flex items-center gap-1.5 rounded-full border px-2 py-0.5 ${
+                    channel.live
+                      ? 'border-lime/30 bg-lime/[0.08] text-lime'
+                      : 'border-white/10 text-muted'
+                  }`}
+                >
                   <Icon name={channelIcon[channel.channel] ?? 'bolt'} size={11} filled={channel.channel === 'whatsapp'} />
                   {channel.label}
+                  <span className="text-[8px] font-semibold uppercase tracking-[0.1em] opacity-80">
+                    {channel.live ? 'live' : 'sim'}
+                  </span>
                 </span>
               ))}
-              <span className="flex items-center gap-1.5 text-lime">
-                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-lime" />
-                listening
-              </span>
             </div>
           </div>
 
@@ -536,18 +569,39 @@ export function AdminPage() {
                     <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
                       <span className="font-mono text-[11px] text-lime/90">{event.orderId}</span>
                       <span className="text-[9.5px] uppercase tracking-[0.12em] text-muted">{event.target}</span>
+                      {event.mode === 'live' && (
+                        <span className="rounded border border-lime/30 px-1 py-px text-[8px] font-semibold uppercase tracking-wider text-lime/80">
+                          live
+                        </span>
+                      )}
                     </div>
                     <p className="mt-0.5 text-[11.5px] leading-snug text-bone/80">{event.message}</p>
+                    {event.status === 'failed' && event.error && (
+                      <p className="mt-1 flex items-start gap-1.5 text-[10.5px] leading-snug text-red-300">
+                        <Icon name="alert" size={11} className="mt-0.5 shrink-0" />
+                        {event.error}
+                      </p>
+                    )}
                   </div>
 
                   <div className="flex shrink-0 items-center gap-2">
                     <div className="text-right">
-                      <div className={`text-[9.5px] font-semibold uppercase tracking-[0.1em] ${pending ? 'text-amber-300' : 'text-lime/80'}`}>
+                      <div
+                        className={`text-[9.5px] font-semibold uppercase tracking-[0.1em] ${
+                          event.status === 'failed'
+                            ? 'text-red-300'
+                            : event.status === 'simulated'
+                              ? 'text-muted'
+                              : pending
+                                ? 'text-amber-300'
+                                : 'text-lime/80'
+                        }`}
+                      >
                         {statusLabel(event.status)}
                       </div>
                       <div className="text-[9.5px] text-muted">{relativeTime(event.createdAt)}</div>
                     </div>
-                    {pending && (
+                    {(pending || event.status === 'failed') && (
                       <button
                         type="button"
                         onClick={() => retryEvent(event)}

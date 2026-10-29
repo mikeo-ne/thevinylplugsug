@@ -49,6 +49,36 @@ openssl rand -hex 32
 
 Redeploy after changing env vars — Vercel does not restart functions automatically.
 
+### Notifications
+
+Orders trigger alerts the moment they are created. Every channel is **optional and independent** —
+the app only delivers where credentials exist, and the admin console labels each channel `LIVE` or
+`SIM` so nobody mistakes a demo for a real alert.
+
+| Channel            | Variables                                                                 | Where to get it                                                  |
+| ------------------ | ------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| Slack              | `SLACK_WEBHOOK_URL`                                                       | Slack → Apps → Incoming Webhooks                                  |
+| Email (Resend)     | `RESEND_API_KEY`, `NOTIFY_EMAIL_TO`, `NOTIFY_EMAIL_FROM`                  | [resend.com](https://resend.com) → API Keys (verify the domain first) |
+| WhatsApp (Cloud API) | `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_ID`, `NOTIFY_WHATSAPP_TO`             | Meta for Developers → WhatsApp → API Setup                        |
+| Generic webhook    | `NOTIFY_WEBHOOK_URL`                                                      | Zapier / Make / n8n / your own endpoint                           |
+| Plant forwarding   | `PLANT_WEBHOOK_URL` (+ optional `PLANT_WEBHOOK_PLANT`, `PUBLIC_BASE_URL`) | Your pressing plant's order API, if they have one                 |
+
+Notes:
+
+- `NOTIFY_WEBHOOK_URL` is an **umbrella**: when set, it fans out the same JSON payload for the
+  slack, email and WhatsApp channels, so you can wire all alerts through one automation instead of
+  configuring three providers.
+- `PUBLIC_BASE_URL` makes file links in the alert absolute (e.g. `https://…/api/files/abc/download`).
+  Set it; otherwise alerts contain relative paths.
+- Deliveries have an 8-second timeout and never throw — a dead webhook marks the event `failed`
+  with the error text in the admin log and retries are one click away. It never blocks checkout.
+- `npm run test:notifications` proves the whole path locally against a throwaway HTTP sink (no
+  credentials needed): simulated → live Slack → failed endpoint → retry → umbrella fan-out.
+- WhatsApp Cloud API only delivers to numbers opted into your business, and outside the 24-hour
+  customer window it needs a pre-approved template. For a first client pitch, Slack + email is the
+  fastest reliable path; add WhatsApp when the Meta template is approved.
+
+
 ## 3. What happens on Vercel (and its limits)
 
 Vercel functions have an **ephemeral, per-instance filesystem**. To keep the demo working out of
@@ -112,3 +142,8 @@ npx vercel --prod
 - [ ] `/admin` accepts your new `ADMIN_PASSCODE`, shows the order, and the webhook log resolves.
 - [ ] "Forward" produces the plant payload and flips the order to **Sent to plant**.
 - [ ] Custom domain added (Vercel → Domains) and `ADMIN_PASSCODE` rotated away from the demo value.
+- [ ] `npm run test:e2e` passes against the production URL (41 checks, ~2 s).
+- [ ] At least one alert channel is live — the console banner is gone and the header reads
+      `live delivery`. See [Notifications](#notifications).
+- [ ] A WhatsApp/Slack paste of the link shows the 1200×630 share card (previews can cache for a
+      while — re-scrape in Slack's app settings if the old preview sticks).
