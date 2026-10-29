@@ -44,8 +44,10 @@ export function VinylMockup({
   const hasInner = sleeveId === 'inner';
 
   // geometry ------------------------------------------------------------------
+  // A sleeve is square — 312mm against a 300mm record. Keeping it square means
+  // a cover prints edge to edge with no crop, exactly as the plant imposes it.
   const jacketW = isSingle ? 148 : 196;
-  const jacketH = isSingle ? 166 : 220;
+  const jacketH = jacketW;
   const jacketX = isSingle ? 46 : 38;
   const jacketY = 150 - jacketH / 2;
   const recordR = isSingle ? 71 : 104;
@@ -152,7 +154,7 @@ export function VinylMockup({
               y={recordCy - labelR}
               width={labelR * 2}
               height={labelR * 2}
-              viewBox="0 34 300 300"
+              viewBox="0 0 300 300"
               preserveAspectRatio="xMidYMid slice"
             >
               <SleeveArt uid={`${id}-lab`} design={design} compact />

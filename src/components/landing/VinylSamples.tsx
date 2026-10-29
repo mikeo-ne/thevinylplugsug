@@ -7,19 +7,18 @@ import { Icon } from '../ui/Icon';
 import { Reveal } from '../ui/Reveal';
 
 /** Which sleeve sits on which format in the shelf, so the grid reads like a run. */
-const SHELF: { art: string; vinylTypeId: string; sleeveId: string }[] = [
-  { art: 'nile-beat', vinylTypeId: 'lp_standard', sleeveId: 'standard' },
-  { art: 'amaka', vinylTypeId: 'lp_colored', sleeveId: 'gatefold' },
-  { art: 'ekitibwa', vinylTypeId: 'seven_single', sleeveId: 'standard' },
-  { art: 'emizannyo', vinylTypeId: 'lp_standard', sleeveId: 'inner' },
-  { art: 'nalubaale', vinylTypeId: 'lp_colored', sleeveId: 'standard' },
-  { art: 'nsenene', vinylTypeId: 'seven_single', sleeveId: 'gatefold' },
+const SHELF: { art: string; vinylTypeId: string; sleeveId: string; release: string }[] = [
+  { art: 'pearl-of-africa', vinylTypeId: 'lp_colored', sleeveId: 'gatefold', release: '7H-041' },
+  { art: 'made-in-entebbe', vinylTypeId: 'lp_standard', sleeveId: 'standard', release: '7H-038' },
+  { art: 'proof-of-life', vinylTypeId: 'lp_colored', sleeveId: 'inner', release: '7H-044' },
+  { art: 'with-the-gs', vinylTypeId: 'seven_single', sleeveId: 'standard', release: '7H-047' },
+  { art: 'badman', vinylTypeId: 'lp_standard', sleeveId: 'gatefold', release: '7H-050' },
 ];
 
 /**
- * Sleeve artwork + catalogue. The shelf shows original designs in the classic
- * East African pressing idiom; each card also states the format and jacket it is
- * printed on, so it doubles as a "this is what you get" reference.
+ * Sample pressings. Each card prints a real cover from the 7H catalogue on the
+ * jacket and crops the same artwork onto the centre label, so what a client sees
+ * is exactly what the plant will press.
  */
 export function VinylSamples() {
   const { configuration, setConfiguration } = useDraft();
@@ -38,13 +37,13 @@ export function VinylSamples() {
             <div className="min-w-0">
               <div className="eyebrow eyebrow-dot mb-4">Sample pressings</div>
               <h2 className="display max-w-xl text-balance text-[clamp(1.75rem,3.4vw,2.8rem)] font-semibold">
-                Sleeves in the <span className="text-lime">classic Kampala idiom</span>.
+                Covers from the <span className="text-lime">7H catalogue</span>.
               </h2>
             </div>
             <p className="max-w-sm text-[13px] leading-relaxed text-muted">
-              Original artwork drawn for this catalogue — sunburst labels, cloth-print geometry, the
-              ochre-and-oxide palettes of the 45 era. Print runs, compound colour and 12&Prime; vs
-              7&Prime; proportions are exactly as the plant presses them.
+              Pearl of Africa, Made in Entebbe, Proof of Life — pressed and brokered by 7H. Each
+              render uses the real cover on the jacket and the same artwork on the label, with the
+              compound colour and 12&Prime; vs 7&Prime; proportions the plant actually presses.
             </p>
           </div>
         </Reveal>
@@ -77,13 +76,12 @@ export function VinylSamples() {
                   <div className="mt-3 flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <h3 className="truncate text-[13px] font-medium text-bone">{design.title}</h3>
-                      <p className="truncate text-[11px] text-muted">{design.artist}</p>
+                      <p className="truncate text-[11px] text-muted">{design.note}</p>
                     </div>
-                    <span className="shrink-0 text-right text-[9.5px] uppercase tracking-[0.1em] text-lime/80">
-                      {design.era.split(' · ')[0]}
+                    <span className="shrink-0 text-right font-mono text-[9.5px] uppercase tracking-[0.1em] text-lime/80">
+                      {item.release}
                     </span>
                   </div>
-                  <p className="mt-1.5 text-[10.5px] leading-snug text-muted/80">{design.note}</p>
                 </button>
               </Reveal>
             );
@@ -94,8 +92,8 @@ export function VinylSamples() {
           <div className="mt-5 flex flex-col gap-2 rounded-xl border border-white/[0.07] bg-white/[0.02] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="flex items-start gap-2 text-[11px] leading-relaxed text-muted">
               <Icon name="info" size={12} className="mt-0.5 shrink-0 text-lime" />
-              Original designs, drawn in-house — no third-party sleeve art is reproduced. Your own
-              artwork replaces it at proof stage.
+              Sleeve artwork shown is from the 7H catalogue. Your own cover replaces it at proof
+              stage — send CMYK artwork with 3&nbsp;mm bleed and we pre-flight it free.
             </p>
             <a
               href="#configurator"

@@ -63,7 +63,12 @@ The pipeline runs itself. What happens, in order:
 | --- | --- | --- |
 | Client submits an order | Email to the desk + WhatsApp to management (Slack too, if wired) | `RESEND_API_KEY`, `NOTIFY_EMAIL_TO` · `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_ID`, `NOTIFY_WHATSAPP_TO` |
 | You confirm the deposit in `/admin` | The production request is **emailed to the plant the client chose** (MOQ-checked) with file links, and POSTed to their endpoint if you have one | `PLANT_*_EMAIL` + `RESEND_API_KEY` |
-| Order submitted (optional) | Release straight away instead of waiting for the deposit | `PLANT_FORWARD_ON_ORDER=true` |
+
+**The deposit is the gate.** Nothing reaches a supplier before an admin presses *Mark deposit
+paid* in `/admin`: a manual *Forward* is refused with `409 deposit_required` until then, and the
+console shows the hand-off as held back with the reason. `PLANT_AUTO_FORWARD=false` only decides
+whether the request goes out on its own at that moment or when you press *Forward* — it never
+releases an order earlier.
 
 Everything is idempotent: confirming the deposit twice never sends the plant a second copy,
 and a failed hand-off shows as `failed` in the console with a one-click retry.
@@ -72,19 +77,18 @@ and a failed hand-off shows as `failed` in the console with a one-click retry.
 | --- | --- | --- |
 | `PLANT_MOBINEKO_EMAIL` | `web@mobineko.com` | Where Mobineko order requests go (published inbox — replace with your account rep once one is assigned) |
 | `PLANT_GREENLAKES_EMAIL` | `hi@greenlakespressing.com` | Where Green Lakes order requests go (customer-service inbox — replace with your account rep once one is assigned) |
-| `PLANT_SEABASS_EMAIL` | `7hmusicgroupug@gmail.com` | Seabass Vinyl (UK, MOQ 50). Currently the desk inbox — swap for the rep's address when assigned |
-| `PLANT_DRDUB_EMAIL` | `7hmusicgroupug@gmail.com` | Dr. Dub (AT, lathe cuts, MOQ 1). Desk inbox until a rep is assigned |
-| `PLANT_GZMEDIA_EMAIL` | `7hmusicgroupug@gmail.com` | GZ Media (CZ, MOQ 250). Desk inbox until a rep is assigned |
-| `PLANT_DEEPGROOVES_EMAIL` | `7hmusicgroupug@gmail.com` | Deepgrooves (NL, MOQ 100). Desk inbox until a rep is assigned |
+| `PLANT_SEABASS_EMAIL` | `orders@seabassvinyl.com` | Seabass Vinyl (UK, MOQ 50) — the rep's own order inbox |
+| `PLANT_DRDUB_EMAIL` | `info@drdub.com` | Dr. Dub (AT, lathe cuts, MOQ 1) |
+| `PLANT_GZMEDIA_EMAIL` | `gz@gzmedia.cz` | GZ Media (CZ, MOQ 250) |
+| `PLANT_DEEPGROOVES_EMAIL` | `info@deepgrooves.eu` | Deepgrooves (NL, MOQ 100) |
 | `PLANT_ORDERS_EMAIL` | — | Catch-all used when a plant has no address of its own |
-| `PLANT_AUTO_FORWARD` | `true` (default) | `false` restores the manual "Forward" button |
-| `PLANT_FORWARD_ON_ORDER` | `false` (default) | `true` releases on submission, before the deposit |
+| `PLANT_AUTO_FORWARD` | `true` (default) | `false` waits for the manual "Forward" button — still only after the deposit |
 | `PLANT_WEBHOOK_URL` | — | Optional JSON endpoint, used in addition to email |
 
-The desk is BCC'd on every plant email, so a plant's reply always has a home. When a plant's order
-inbox *is* the desk inbox (the current state for Seabass, Dr. Dub, GZ Media and Deepgrooves) that
-BCC is skipped — one mailbox, one copy — and the console flags it as routing to the desk. The
-subject line names the plant, so a single inbox can still triage which job is whose.
+Each plant has its own rep inbox, so the request lands with the people pressing the record. The desk
+is BCC'd on every plant email, so a reply always has a home; if a plant's inbox *is* the desk
+address, that BCC is skipped (one mailbox, one copy). The subject line names the plant as well, so a
+forwarded thread is still obvious.
 
 ### Run sizes and the plant panel
 

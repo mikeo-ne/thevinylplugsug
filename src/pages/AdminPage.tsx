@@ -116,8 +116,16 @@ export function AdminPage() {
       await loadOverview(true);
     });
 
+  const depositCleared = (order: Order) =>
+    order.payment.status === 'deposit_paid' || order.payment.status === 'paid';
+
   const forward = (order: Order) =>
     runAction(`forward-${order.id}`, async () => {
+      // The API refuses this too — the deposit is the gate, not the button.
+      if (!depositCleared(order)) {
+        notify(`Confirm the deposit for ${order.id} first — suppliers are only contacted after it clears.`, 'error');
+        return;
+      }
       await api.adminForward(order.id, forwardPlant);
       notify(`${order.id} forwarded to the plant.`, 'success');
       await loadOverview(true);
@@ -191,8 +199,9 @@ export function AdminPage() {
               Order pipeline
             </h1>
             <p className="mt-1.5 text-[12px] text-muted">
-              Every submission alerts the desk, and the production request goes to the plant{' '}
-              {overview?.automation?.autoForward ? 'on deposit confirmation — automatically' : 'by hand (auto-forward is off)'}.
+              Every submission alerts the desk. The production request only leaves for the plant once you confirm
+              the deposit{' '}
+              {overview?.automation?.autoForward ? '— sent automatically at that point' : '(auto-forward is off, so press Forward)'}.
               {lastSync && <> Synced {relativeTime(lastSync.toISOString())}.</>}
             </p>
           </div>
@@ -241,11 +250,7 @@ export function AdminPage() {
               ok={Boolean(overview.automation.plantEmail) && overview.automation.autoForward}
               detail={
                 overview.automation.plantEmail
-                  ? `Auto-emailed ${overview.automation.autoForward ? 'on deposit' : '(auto-forward off)'}${
-                      (overview.automation.plants ?? []).some((plant) => plant.aliasesDesk)
-                        ? ' · some plants route to the desk inbox'
-                        : ''
-                    }`
+                  ? `Deposit-gated · ${overview.automation.autoForward ? 'auto-emailed when the deposit clears' : 'manual forward after the deposit'}`
                   : 'Set the PLANT_*_EMAIL variables + RESEND_API_KEY'
               }
             />
@@ -527,11 +532,16 @@ export function AdminPage() {
                       <button
                         type="button"
                         onClick={() => forward(selected)}
-                        disabled={busy === `forward-${selected.id}`}
-                        className="flex items-center gap-1.5 bg-lime px-3.5 py-2 text-[11.5px] font-semibold text-ink transition-colors hover:bg-lime-soft disabled:opacity-50"
+                        disabled={busy === `forward-${selected.id}` || !depositCleared(selected)}
+                        title={
+                          depositCleared(selected)
+                            ? 'Send the production request to the plant'
+                            : 'Confirm the deposit first — suppliers are only contacted after it clears'
+                        }
+                        className="flex items-center gap-1.5 bg-lime px-3.5 py-2 text-[11.5px] font-semibold text-ink transition-colors hover:bg-lime-soft disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-muted"
                       >
                         <Icon name="factory" size={13} />
-                        Forward
+                        {depositCleared(selected) ? 'Forward' : 'Deposit first'}
                       </button>
                     </div>
 

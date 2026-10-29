@@ -96,7 +96,7 @@ export function VinylDisc({
               y={100 - labelRadius}
               width={labelRadius * 2}
               height={labelRadius * 2}
-              viewBox="0 34 300 300"
+              viewBox="0 0 300 300"
               preserveAspectRatio="xMidYMid slice"
             >
               <SleeveArt uid={`${id}-lab`} design={design} compact />

@@ -656,8 +656,8 @@ export function OrderPage() {
                           Submitting files your order — no charge is taken automatically.
                         </div>
                         <p className="mt-1 text-[11.5px] leading-relaxed text-muted">
-                          Management confirms your deposit first, then sends the plant spec sheet and
-                          proof. Your quoted total is{' '}
+                          Nothing reaches a supplier until management confirms your 50% deposit — then the
+                          plant receives the spec sheet and you get the proof. Your quoted total is{' '}
                           <span className="text-lime">{usd(quote.total, { cents: true })}</span> (
                           {ugx(quote.totals.total.ugx)}).
                         </p>

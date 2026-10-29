@@ -24,7 +24,7 @@ const nextSteps = [
   },
   {
     title: 'Plant spec sheet',
-    body: 'Your configuration and file links are forwarded to the pressing plant for scheduling.',
+    body: 'Only after the deposit clears, your configuration and file links are sent to the pressing plant.',
     eta: 'Same business day',
   },
   {
