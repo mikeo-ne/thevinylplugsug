@@ -18,11 +18,15 @@ const REQUEST_TIMEOUT = 8000;
 // sink instead of the real APIs.
 const RESEND_URL = process.env.RESEND_BASE_URL ?? 'https://api.resend.com/emails';
 const WHATSAPP_GRAPH_URL = process.env.WHATSAPP_GRAPH_URL ?? 'https://graph.facebook.com/v21.0';
+// Read per call, not at import: the test harness points this at a local sink,
+// and tests configure the environment after the module is loaded.
+const telegramApi = () => (process.env.TELEGRAM_API_BASE ?? 'https://api.telegram.org').replace(/\/$/, '');
 
 export const notificationConfig = () => ({
   slack: Boolean(process.env.SLACK_WEBHOOK_URL),
   email: Boolean(process.env.RESEND_API_KEY),
   whatsapp: Boolean(process.env.WHATSAPP_TOKEN && process.env.WHATSAPP_PHONE_ID),
+  telegram: Boolean(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID),
   webhook: Boolean(process.env.NOTIFY_WEBHOOK_URL),
   plant: Boolean(process.env.PLANT_WEBHOOK_URL),
   plantEmail: Boolean(
@@ -36,6 +40,12 @@ export const notificationConfig = () => ({
   // to something on 7hmusicgroup.com once the domain is verified.
   emailFrom: process.env.NOTIFY_EMAIL_FROM ?? '7H Music Group <onboarding@resend.dev>',
   whatsappTo: process.env.NOTIFY_WHATSAPP_TO ?? COMPANY.whatsappNumber ?? null,
+  // One bot can talk to a person, a group and a topic list — so several chat ids
+  // are allowed, comma separated. The first one is shown in the console.
+  telegramChats: String(process.env.TELEGRAM_CHAT_ID ?? '')
+    .split(',')
+    .map((chat) => chat.trim())
+    .filter(Boolean),
   // Outside a 24-hour customer window Meta only accepts pre-approved templates.
   // Default matches the sample template documented in DEPLOYMENT.md.
   whatsappTemplate: process.env.WHATSAPP_TEMPLATE_NAME ?? 'new_vinyl_order',
@@ -50,6 +60,7 @@ export function isChannelLive(channel) {
   if (channel === 'slack') return config.slack || config.webhook;
   if (channel === 'email') return config.email || config.webhook;
   if (channel === 'whatsapp') return config.whatsapp || config.webhook;
+  if (channel === 'telegram') return config.telegram || config.webhook;
   if (channel === 'plant') return config.plant;
   return false;
 }
@@ -288,6 +299,131 @@ async function deliverWhatsApp(order) {
   }
 }
 
+/* ------------------------------------------------------------------ *
+ * Telegram
+ *
+ * The rail that needs no business paperwork: a bot token from @BotFather and a
+ * chat id, and orders buzz a phone in two minutes. Meta's WhatsApp Cloud API is
+ * still supported, but it wants a verified business, a fresh phone number and an
+ * approved template first — Telegram is what a one-person desk can actually run.
+ * ------------------------------------------------------------------ */
+
+const escapeHtml = (value) =>
+  String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+/** Telegram caps a message at 4096 characters; stay clear of the edge. */
+const TELEGRAM_LIMIT = 3900;
+
+/** The order-sheet message a label's run sends to the desk's phone. */
+export function buildTelegramMessage(order) {
+  const config = describeConfiguration(order.configuration);
+  const plant = PRESSING_PLANTS.find((entry) => entry.id === order.plantPreference)?.name ?? 'Mobineko';
+  const files = [...(order.files?.audio ?? []), ...(order.files?.artwork ?? [])];
+  const address = orderAddress(order);
+  const base = (process.env.PUBLIC_BASE_URL ?? 'https://thevinylplugsug.vercel.app').replace(/\/$/, '');
+
+  const text = [
+    `🎙 <b>NEW VINYL ORDER</b> · <code>${escapeHtml(order.id)}</code>`,
+    `<b>${escapeHtml(order.client.name)}</b>`,
+    `${config.quantity} × ${escapeHtml(config.vinyl)} · ${escapeHtml(config.sleeve)}`,
+    `Plant · ${escapeHtml(plant)}`,
+    `Total · <b>${money(order.quote.total)}</b> · UGX ${order.quote.totals.total.ugx.toLocaleString('en-US')}`,
+    `Deposit · ${money(order.quote.deposit)} via ${escapeHtml(paymentLabel(order.payment.method))}${order.payment.status !== 'deposit_paid' ? ' · not yet confirmed' : ''}`,
+    '',
+    '<b>Ship to</b>',
+    ...addressLines(address).map((line) => escapeHtml(line)),
+    '',
+    `<b>Contact</b> ${escapeHtml(order.client.email)}${order.client.phone ? ` · ${escapeHtml(order.client.phone)}` : ''}`,
+    `<b>Files</b> ${files.length ? escapeHtml(files.map((file) => file.originalName).join(', ')) : 'pending upload'}`,
+    order.client.notes ? `<b>Notes</b> ${escapeHtml(order.client.notes)}` : null,
+    '',
+    `<a href="${base}/admin">Confirm the deposit →</a> · nothing reaches ${escapeHtml(plant)} until you do.`,
+  ]
+    .filter((line) => line !== null)
+    .join('\n');
+
+  return text.length > TELEGRAM_LIMIT ? `${text.slice(0, TELEGRAM_LIMIT - 1)}…` : text;
+}
+
+/** The same thing for a fan's retail purchase. */
+export function buildShopTelegramMessage(order) {
+  const address = order.buyer ?? {};
+  const base = (process.env.PUBLIC_BASE_URL ?? 'https://thevinylplugsug.vercel.app').replace(/\/$/, '');
+  const text = [
+    `🛒 <b>SHOP ORDER</b> · <code>${escapeHtml(order.id)}</code>`,
+    ...order.items.map(
+      (item) =>
+        `${item.quantity} × ${escapeHtml(item.title)} · ${escapeHtml(item.release)} · ${money(item.lineTotal)}`,
+    ),
+    '',
+    `<b>Total</b> ${money(order.total)} · UGX ${order.totals.total.ugx.toLocaleString('en-US')}`,
+    `<b>Delivery</b> ${escapeHtml(order.delivery?.name ?? '—')}${order.delivery?.requiresAddress ? '' : ' (studio pickup)'}`,
+    ...(order.delivery?.requiresAddress
+      ? ['<b>Ship to</b>', ...addressLines(orderAddress(order)).map((line) => escapeHtml(line))]
+      : []),
+    '',
+    `<b>Buyer</b> ${escapeHtml(address.name ?? '')} · ${escapeHtml(address.phone ?? '')}`,
+    `<b>Email</b> ${escapeHtml(address.email ?? '')}`,
+    order.notes ? `<b>Note for the packer</b> ${escapeHtml(order.notes)}` : null,
+    '',
+    `Payment is <b>${escapeHtml(order.payment?.status ?? 'pending')}</b> — pack it once it clears.`,
+    `<a href="${base}/admin">Open the shop panel →</a>`,
+  ]
+    .filter((line) => line !== null)
+    .join('\n');
+
+  return text.length > TELEGRAM_LIMIT ? `${text.slice(0, TELEGRAM_LIMIT - 1)}…` : text;
+}
+
+/**
+ * One sendMessage per configured chat id.
+ *
+ * Telegram answers 200 for a rejected message too (`ok: false` with a
+ * description), so the body is inspected rather than trusting the status code —
+ * a revoked bot or a chat that never /start-ed the bot otherwise looks delivered.
+ */
+async function telegramSend(text) {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  if (!token) throw new Error('TELEGRAM_BOT_TOKEN is not set');
+  const chats = notificationConfig().telegramChats;
+  if (chats.length === 0) throw new Error('TELEGRAM_CHAT_ID is not set');
+
+  const results = [];
+  for (const chat of chats) {
+    const result = await postJson(
+      `${telegramApi()}/bot${token}/sendMessage`,
+      {
+        chat_id: chat,
+        text,
+        parse_mode: 'HTML',
+        disable_web_page_preview: true,
+      },
+    );
+    let parsed = null;
+    try {
+      parsed = JSON.parse(result.body);
+    } catch {
+      parsed = null;
+    }
+    if (parsed && parsed.ok === false) {
+      throw new Error(parsed.description ?? 'Telegram rejected the message');
+    }
+    results.push({ chat, httpStatus: result.httpStatus });
+  }
+  return { chats: chats.length, results };
+}
+
+async function deliverTelegram(order) {
+  return telegramSend(buildTelegramMessage(order));
+}
+
+async function deliverShopTelegram(order) {
+  return telegramSend(buildShopTelegramMessage(order));
+}
+
 /**
  * The template message body. Parameters map 1:1 onto the approved template —
  * see DEPLOYMENT.md → "WhatsApp template" for the exact sample text to submit.
@@ -366,6 +502,7 @@ export async function deliverNotification(channel, order) {
     if (channel === 'slack' && config.slack) result = await deliverSlack(order);
     else if (channel === 'email' && config.email) result = await deliverEmail(order);
     else if (channel === 'whatsapp' && config.whatsapp) result = await deliverWhatsApp(order);
+    else if (channel === 'telegram' && config.telegram) result = await deliverTelegram(order);
     else if (config.webhook) result = await deliverGenericWebhook(order, channel);
     else return { status: 'simulated', mode: 'simulated', error: null };
 
@@ -803,6 +940,7 @@ export async function deliverShopNotification(channel, order) {
     if (channel === 'slack' && config.slack) result = await deliverShopSlack(order);
     else if (channel === 'email' && config.email) result = await deliverShopEmail(order);
     else if (channel === 'whatsapp' && config.whatsapp) result = await deliverShopWhatsApp(order);
+    else if (channel === 'telegram' && config.telegram) result = await deliverShopTelegram(order);
     else if (config.webhook) result = await deliverShopGenericWebhook(order, channel);
     else return { status: 'simulated', mode: 'simulated', error: null };
 
@@ -878,6 +1016,15 @@ export function channelStatus() {
           : 'Not configured',
     },
     {
+      channel: 'telegram',
+      live: config.telegram || config.webhook,
+      detail: config.telegram
+        ? `Telegram bot → ${config.telegramChats.join(', ')}`
+        : config.webhook
+          ? 'Generic webhook'
+          : 'Not configured',
+    },
+    {
       channel: 'plant',
       live: config.plantEmail || config.plant,
       detail: config.plantEmail
@@ -896,6 +1043,7 @@ export function channelStatus() {
 const ALERT_ENV = {
   email: ['RESEND_API_KEY', 'NOTIFY_EMAIL_TO', 'NOTIFY_EMAIL_FROM'],
   whatsapp: ['WHATSAPP_TOKEN', 'WHATSAPP_PHONE_ID', 'NOTIFY_WHATSAPP_TO'],
+  telegram: ['TELEGRAM_BOT_TOKEN', 'TELEGRAM_CHAT_ID'],
   slack: ['SLACK_WEBHOOK_URL'],
   webhook: ['NOTIFY_WEBHOOK_URL'],
   plant: ['RESEND_API_KEY', 'PLANT_ORDERS_EMAIL'],
@@ -1017,6 +1165,23 @@ export async function sendTestAlert(channel) {
       };
     }
 
+    if (channel === 'telegram') {
+      if (!config.telegram) throw new Error('TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID are not set');
+      const result = await telegramSend(
+        `✅ <b>7H alert test — passing</b>\n\nSent ${stamp} from the operations console.\nNew pressing orders and fan purchases will arrive in this chat.\n\n<a href="${base}/admin">Open the console</a>`,
+      );
+      return {
+        channel,
+        status: 'delivered',
+        mode: 'live',
+        httpStatus: result.results[0]?.httpStatus ?? 200,
+        target: config.telegramChats.join(', '),
+        detail: `Telegram accepted the message for ${result.chats} chat${result.chats === 1 ? '' : 's'}`,
+        latencyMs: Date.now() - attemptedAt,
+        attemptedAt: stamp,
+      };
+    }
+
     if (channel === 'slack') {
       const url = process.env.SLACK_WEBHOOK_URL;
       if (!url) throw new Error('SLACK_WEBHOOK_URL is not set');
@@ -1078,7 +1243,7 @@ export async function sendTestAlert(channel) {
 }
 
 /** Try every channel at once — one press, one honest report per channel. */
-export async function sendTestAlerts(channels = ['email', 'whatsapp', 'slack', 'webhook']) {
+export async function sendTestAlerts(channels = ['email', 'telegram', 'whatsapp', 'slack', 'webhook']) {
   const results = await Promise.all(channels.map((channel) => sendTestAlert(channel)));
   return results;
 }

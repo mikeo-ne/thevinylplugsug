@@ -8,14 +8,16 @@ import type { AlertTestResult, SystemHealth } from '../../types';
 const CHANNEL_LABEL: Record<string, string> = {
   email: 'Email',
   whatsapp: 'WhatsApp',
+  telegram: 'Telegram',
   slack: 'Slack',
   webhook: 'Webhook',
   plant: 'Pressing plant',
 };
 
-const CHANNEL_ICON: Record<string, 'mail' | 'whatsapp' | 'hash' | 'factory' | 'bolt'> = {
+const CHANNEL_ICON: Record<string, 'mail' | 'whatsapp' | 'send' | 'hash' | 'factory' | 'bolt'> = {
   email: 'mail',
   whatsapp: 'whatsapp',
+  telegram: 'send',
   slack: 'hash',
   plant: 'factory',
   webhook: 'bolt',

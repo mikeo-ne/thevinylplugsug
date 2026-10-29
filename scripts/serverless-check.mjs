@@ -94,8 +94,8 @@ try {
   const settled = await json(`/api/orders/${orderId}`);
   const delivered = settled.body.events.filter((event) => event.channel !== 'plant');
   check(
-    delivered.length === 3 && delivered.every((event) => event.status === 'delivered'),
-    'elapsed-time reconciliation marks Slack/email/WhatsApp delivered',
+    delivered.length === 4 && delivered.every((event) => event.status === 'delivered'),
+    'elapsed-time reconciliation marks Slack/email/WhatsApp/Telegram delivered',
   );
 
   const overview = await json('/api/admin/overview', {

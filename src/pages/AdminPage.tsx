@@ -14,6 +14,7 @@ const channelIcon: Record<string, IconName> = {
   slack: 'hash',
   email: 'mail',
   whatsapp: 'whatsapp',
+  telegram: 'send',
   plant: 'factory',
 };
 

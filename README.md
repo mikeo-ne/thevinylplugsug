@@ -55,6 +55,7 @@ Copy `.env.example` if you want to override defaults locally.
 | `PLANT_AUTO_FORWARD` | `true`   | Send the production request the moment an admin confirms the deposit (never before) |
 | `RESEND_API_KEY`  | —           | Real email alerts and buyer receipts (unset = simulated) |
 | `NOTIFY_EMAIL_TO` | `CONTACT_EMAIL` | Who receives desk alerts (comma-separated)   |
+| `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` | — | Real phone alerts — BotFather token, no business account needed |
 | `WHATSAPP_TOKEN` + `WHATSAPP_PHONE_ID` + `NOTIFY_WHATSAPP_TO` | — | Real WhatsApp alerts |
 | `SLACK_WEBHOOK_URL` / `NOTIFY_WEBHOOK_URL` | — | Slack or a single automation endpoint |
 | `DATA_DIR`        | `./data`    | Fallback JSON store when no database is configured |
@@ -296,6 +297,7 @@ delivers only when its variables are present; otherwise it stays `simulated` and
 | --- | --- | --- |
 | Slack | `SLACK_WEBHOOK_URL` | Incoming Webhook; rich blocks with client, package and money |
 | Email | `RESEND_API_KEY`, `NOTIFY_EMAIL_TO`, `NOTIFY_EMAIL_FROM` | Resend; HTML + plain-text order sheet |
+| Telegram | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | BotFather token + chat id(s); the alert that needs no business account |
 | WhatsApp | `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_ID`, `NOTIFY_WHATSAPP_TO` | Meta Cloud API; recipient must be opted in |
 | Umbrella webhook | `NOTIFY_WEBHOOK_URL` | One JSON POST per channel — Zapier / Make / n8n / your bot |
 | Plant forwarding | `PLANT_WEBHOOK_URL` (+ `PLANT_WEBHOOK_PLANT`, `PUBLIC_BASE_URL`) | Enables the admin “Forward to plant” action |

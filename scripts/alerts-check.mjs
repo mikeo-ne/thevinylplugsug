@@ -36,7 +36,7 @@ const check = (name, condition, detail) => {
  * The sink: one server pretending to be Resend, Meta and Slack
  * ------------------------------------------------------------------ */
 
-const received = { emails: [], whatsapp: [], slack: [], webhook: [] };
+const received = { emails: [], whatsapp: [], telegram: [], slack: [], webhook: [] };
 let emailStatus = 200;
 let emailError = null;
 
@@ -78,6 +78,27 @@ const sink = http.createServer((req, res) => {
       return;
     }
 
+    if (/^\/bot[^/]+\/sendMessage$/.test(url)) {
+      const token = url.split('/')[1].replace(/^bot/, '');
+      if (token !== 'test-token') {
+        res
+          .writeHead(401, { 'content-type': 'application/json' })
+          .end(JSON.stringify({ ok: false, error_code: 401, description: 'Unauthorized' }));
+        return;
+      }
+      if (!json.chat_id) {
+        res
+          .writeHead(400, { 'content-type': 'application/json' })
+          .end(JSON.stringify({ ok: false, error_code: 400, description: 'Bad Request: chat_id is empty' }));
+        return;
+      }
+      received.telegram.push({ url, body: json });
+      res
+        .writeHead(200, { 'content-type': 'application/json' })
+        .end(JSON.stringify({ ok: true, result: { message_id: 42, chat: { id: json.chat_id } } }));
+      return;
+    }
+
     if (url.startsWith('/slack')) {
       received.slack.push(json);
       res.writeHead(200, { 'content-type': 'text/plain' }).end('ok');
@@ -115,6 +136,9 @@ process.env.WHATSAPP_PHONE_ID = '1029384756';
 process.env.NOTIFY_EMAIL_TO = 'desk@7h.test, owner@7h.test';
 process.env.NOTIFY_EMAIL_FROM = '7H Music Group <alerts@7hmusicgroup.test>';
 process.env.NOTIFY_WHATSAPP_TO = '256768261003';
+process.env.TELEGRAM_API_BASE = SINK;
+process.env.TELEGRAM_BOT_TOKEN = 'test-token';
+process.env.TELEGRAM_CHAT_ID = '768261003, -1001234567890';
 process.env.SLACK_WEBHOOK_URL = `${SINK}/slack`;
 process.env.NOTIFY_WEBHOOK_URL = `${SINK}/webhook`;
 process.env.CRON_SECRET = 'cron_test_secret';
@@ -174,6 +198,19 @@ check(
 );
 check('whatsapp body mentions the test', /alert test/i.test(received.whatsapp[0]?.body?.text?.body ?? ''));
 
+const telegramResult = await sendTestAlert('telegram');
+check('telegram test is delivered', telegramResult.status === 'delivered', telegramResult.error);
+check('telegram hit the bot sendMessage path', received.telegram[0]?.url === '/bottest-token/sendMessage');
+check('every configured chat gets the message', received.telegram.length === 2, String(received.telegram.length));
+check(
+  'the personal chat and the group are both addressed',
+  JSON.stringify(received.telegram.map((entry) => entry.body.chat_id)) ===
+    JSON.stringify(['768261003', '-1001234567890']),
+  JSON.stringify(received.telegram.map((entry) => entry.body.chat_id)),
+);
+check('telegram renders HTML, not literal tags', received.telegram[0]?.body?.parse_mode === 'HTML');
+check('the bot token is never echoed in the report', !String(telegramResult.target ?? '').includes('test-token'));
+
 const slackResult = await sendTestAlert('slack');
 check('slack test is delivered', slackResult.status === 'delivered', slackResult.error);
 check('slack received the message', received.slack.length === 1);
@@ -184,8 +221,8 @@ check('generic webhook test is delivered', webhookResult.status === 'delivered',
 check('webhook payload is tagged', received.webhook[0]?.event === 'alert.test');
 check('the webhook host is not echoed back', !String(webhookResult.target ?? '').includes(`:${sinkPort}`), webhookResult.target);
 
-const all = await sendTestAlerts(['email', 'whatsapp', 'slack', 'webhook']);
-check('every channel can be tested in one press', all.length === 4);
+const all = await sendTestAlerts(['email', 'telegram', 'whatsapp', 'slack', 'webhook']);
+check('every channel can be tested in one press', all.length === 5);
 check('…and each reports its own outcome', all.every((result) => 'status' in result && 'channel' in result));
 
 /* ------------------------------------------------------------------ *

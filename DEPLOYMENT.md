@@ -56,7 +56,8 @@ Once `main` is up to date, any Vercel project connected to this repository deplo
 | `RESEND_API_KEY` | no       | `re_…`                               | Real email. Unset = email alerts are simulated     |
 | `NOTIFY_EMAIL_TO`| no (with Resend) | `7hmusicgroupug@gmail.com, you@…` | Who receives desk alerts                    |
 | `NOTIFY_EMAIL_FROM` | no    | `7H Music Group <alerts@yourdomain>` | Sender; `onboarding@resend.dev` works before the domain is verified |
-| `WHATSAPP_TOKEN` / `WHATSAPP_PHONE_ID` / `NOTIFY_WHATSAPP_TO` | no | from Meta | Real WhatsApp alerts                    |
+| `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | no | from @BotFather | Real phone alerts in minutes, no business account. Several chat ids, comma separated |
+| `WHATSAPP_TOKEN` / `WHATSAPP_PHONE_ID` / `NOTIFY_WHATSAPP_TO` | no | from Meta | Real WhatsApp alerts (needs a verified business + approved template) |
 | `SLACK_WEBHOOK_URL` | no    | `https://hooks.slack.com/services/…` | Alerts into a Slack channel                       |
 | `NOTIFY_WEBHOOK_URL` | no   | `https://hooks.zapier.com/…`         | One endpoint for every channel (Zapier/Make/n8n)   |
 
@@ -164,6 +165,27 @@ quote maths and the automated hand-off all read from it. Point `ordersEmail` at 
 via an env var so the deposit-confirmation email has somewhere to land. Verify the whole
 chain without credentials: `npm run test:automation` (35 checks against a local sink).
 
+### Telegram (the five-minute alert rail)
+
+Meta wants a verified business, a phone number that is not already on WhatsApp, and an approved
+Utility template before it will deliver a business-initiated message. Telegram wants a token. For a
+desk that just needs the order on a phone, this is the rail to set up first.
+
+1. Install Telegram, message **@BotFather** → `/newbot` → name it (`7H Orders`) → copy the token.
+2. Open your new bot and press **Start** (a bot cannot message someone who never started it).
+3. Read your chat id: `https://api.telegram.org/bot<TOKEN>/getUpdates` → `result[0].message.chat.id`.
+   A group id is negative (`-100…`) — add the bot to the group and read it the same way.
+4. Vercel → Settings → Environment Variables: `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`.
+   Several destinations are fine, comma separated: a DM *and* a group, for instance.
+5. Console → **System → Send test alert** — a green Telegram line means the phone buzzes.
+
+Every pressing order and every fan purchase sends one message: order reference, artist, spec, total,
+deposit, the **full ship-to address**, and — for pressing orders — the reminder that nothing reaches
+the plant until the deposit is confirmed. Same message body as the email, sized for a phone.
+
+`TELEGRAM_API_BASE` exists only so `npm run test:alerts` can point the bot at a local sink; leave it
+unset in production.
+
 ### WhatsApp template
 
 Business-initiated WhatsApp messages must use a pre-approved template. The app sends
@@ -225,15 +247,17 @@ There are two honest states for an alert: it left, or it did not. The console sh
    address that owns the account* — which is exactly the desk inbox, so this works immediately for
    internal alerts. When you are ready for buyer receipts, verify `7hmusicgroup.com` and set
    `NOTIFY_EMAIL_FROM=7H Music Group <orders@7hmusicgroup.com>`.
-2. **WhatsApp.** Meta for Developers → your app → WhatsApp → API Setup gives `WHATSAPP_TOKEN` and
+2. **Telegram.** The shortest path to a buzzing phone — see **Telegram** above. No business account,
+   no template review, and it works on a personal phone or a group.
+3. **WhatsApp.** Meta for Developers → your app → WhatsApp → API Setup gives `WHATSAPP_TOKEN` and
    `WHATSAPP_PHONE_ID`; set `NOTIFY_WHATSAPP_TO` to the digits of the phone that should buzz. Outside
    a 24-hour window Meta only accepts an approved template — submit the body printed in
    **WhatsApp template** above (category *Utility*) and keep `WHATSAPP_TEMPLATE_NAME` in step.
-3. **Prove it.** Console → **System** → **Send test alert**. It makes one real call per configured
+4. **Prove it.** Console → **System** → **Send test alert**. It makes one real call per configured
    channel and prints the provider's own answer next to it — a green line means the message left,
    and a rejection shows Resend's or Meta's exact wording (invalid key, unverified domain, template
    not approved) instead of a silent failure.
-4. **Nothing gets lost.** Every attempt is written to the alert log. Failures sit in the outbox with
+5. **Nothing gets lost.** Every attempt is written to the alert log. Failures sit in the outbox with
    their error and attempt count, **Retry failed** re-sends them on demand, and with `CRON_SECRET`
    set the daily cron in `vercel.json` retries whatever is still failing (up to five attempts each).
 
