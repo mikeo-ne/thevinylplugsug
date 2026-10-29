@@ -745,10 +745,19 @@ function LoginScreen({ onSuccess }: { onSuccess: (token: string) => void }) {
             {busy ? 'Verifying…' : 'Enter console'}
           </button>
 
-          <div className="mt-4 rounded-lg border border-white/[0.08] bg-black/25 px-3 py-2.5 text-center">
-            <span className="text-[10px] uppercase tracking-[0.14em] text-muted">Demo access code</span>
-            <div className="mt-0.5 font-mono text-[13px] tracking-[0.2em] text-lime">7HADMIN</div>
-          </div>
+          <p className="mt-4 flex items-start gap-2 rounded-lg border border-white/[0.08] bg-black/25 px-3 py-2.5 text-[11px] leading-relaxed text-muted">
+            <Icon name="lock" size={12} className="mt-0.5 shrink-0 text-lime/70" />
+            <span>
+              Codes are issued by 7H management and never shown here. Lost yours?{' '}
+              <a
+                href={mailtoUrl('Operations console access')}
+                className="text-bone underline decoration-white/20 underline-offset-2 transition-colors hover:text-lime"
+              >
+                Ask for a reset
+              </a>
+              .
+            </span>
+          </p>
         </form>
 
         <p className="mt-5 text-center text-[11px] text-muted">

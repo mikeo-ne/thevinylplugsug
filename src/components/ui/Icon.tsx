@@ -32,10 +32,18 @@ type IconName =
   | 'music'
   | 'printer'
   | 'eye'
+  | 'info'
   | 'menu';
 
 const paths: Record<IconName, React.ReactNode> = {
   'arrow-right': <path d="M4 12h15m0 0-5.5-5.5M19 12l-5.5 5.5" />,
+  info: (
+    <>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 11v5.2" />
+      <circle cx="12" cy="7.8" r="0.9" fill="currentColor" stroke="none" />
+    </>
+  ),
   'arrow-up-right': <path d="M7 17 17 7m0 0h-7m7 0v7" />,
   check: <path d="m4.5 12.5 4.5 4.5L19.5 6.5" />,
   'check-circle': (

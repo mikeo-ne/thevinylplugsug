@@ -31,8 +31,11 @@ export function VinylDisc({
 
   return (
     <div
-      className={`relative aspect-square ${className}`}
-      style={{ width: size, maxWidth: '100%' }}
+      className={`relative aspect-square w-full ${className}`}
+      // `size` is now a ceiling, not a fixed width: a fixed pixel width made the
+      // hero grid's min-content wider than a phone screen and pushed the whole
+      // page sideways. `maxWidth` keeps the desktop centrepiece exact.
+      style={{ maxWidth: size }}
       aria-hidden="true"
     >
       <div className="absolute inset-[6%] rounded-full bg-lime/10 blur-3xl" />

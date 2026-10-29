@@ -29,6 +29,7 @@ export function Footer() {
             <ul className="space-y-2.5 text-sm text-muted">
               <li><a className="transition-colors hover:text-lime" href="/#configurator">Quote configurator</a></li>
               <li><a className="transition-colors hover:text-lime" href="/#process">How it works</a></li>
+              <li><a className="transition-colors hover:text-lime" href="/#samples">Sample pressings</a></li>
               <li><a className="transition-colors hover:text-lime" href="/#plants">Pressing partners</a></li>
               <li><a className="transition-colors hover:text-lime" href="/#faq">FAQ</a></li>
             </ul>
@@ -53,7 +54,7 @@ export function Footer() {
               </p>
               <p className="flex items-start gap-2.5">
                 <Icon name="mail" size={15} className="mt-0.5 shrink-0 text-lime/70" />
-                <a href={`mailto:${company.email}`} className="transition-colors hover:text-lime">
+                <a href={`mailto:${company.email}`} className="break-all transition-colors hover:text-lime">
                   {company.email}
                 </a>
               </p>

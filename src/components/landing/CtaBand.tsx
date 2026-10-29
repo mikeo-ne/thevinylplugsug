@@ -36,10 +36,10 @@ export function CtaBand() {
                 </p>
               </div>
 
-              <div className="flex flex-col gap-2.5">
+              <div className="grid grid-cols-1 gap-2.5 min-[420px]:grid-cols-2 sm:grid-cols-1">
                 <Link
                   to="/order"
-                  className="group inline-flex items-center justify-center gap-2 rounded-full bg-ink px-6 py-4 text-sm font-semibold text-bone transition-all hover:bg-[#1d1d1d] hover:shadow-[0_18px_40px_-18px_rgba(0,0,0,0.6)]"
+                  className="group inline-flex items-center justify-center gap-2 rounded-full bg-ink px-5 py-3.5 text-[13.5px] font-semibold text-bone sm:px-6 sm:py-4 sm:text-sm transition-all hover:bg-[#1d1d1d] hover:shadow-[0_18px_40px_-18px_rgba(0,0,0,0.6)]"
                 >
                   Start your order
                   <Icon
@@ -53,7 +53,7 @@ export function CtaBand() {
                   href={whatsappUrl()}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex items-center justify-center gap-2 rounded-full border border-ink/25 px-6 py-4 text-sm font-medium text-ink transition-colors hover:border-ink/50 hover:bg-ink/[0.06]"
+                  className="inline-flex items-center justify-center gap-2 rounded-full border border-ink/25 px-5 py-3.5 text-[13.5px] font-medium text-ink sm:px-6 sm:py-4 sm:text-sm transition-colors hover:border-ink/50 hover:bg-ink/[0.06]"
                 >
                   <Icon name="whatsapp" size={16} filled />
                   Book a call

@@ -7,6 +7,7 @@ import { whatsappUrl } from '../../lib/contact';
 const links = [
   { label: 'Configurator', to: '/#configurator' },
   { label: 'Process', to: '/#process' },
+  { label: 'Samples', to: '/#samples' },
   { label: 'Plants', to: '/#plants' },
   { label: 'FAQ', to: '/#faq' },
 ];

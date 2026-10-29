@@ -41,7 +41,7 @@ Copy `.env.example` if you want to override defaults locally.
 | ----------------- | ----------- | ---------------------------------------------- |
 | `PORT`            | `4173`      | HTTP port (standalone server)                  |
 | `FX_UGX_PER_USD`  | `3750`      | Indicative FX rate used on every quote         |
-| `ADMIN_PASSCODE`  | `7HADMIN`   | Access code for the operations console         |
+| `ADMIN_PASSCODE`  | built-in demo code | Access code for the operations console — set your own before sharing the link |
 | `SESSION_SECRET`  | derived     | Signs stateless admin tokens — set in production |
 | `MAX_UPLOAD_MB`   | `80` (`4` on Vercel) | Per-file upload cap advertised to the client |
 | `DATA_DIR`        | `./data`    | JSON store location (`/tmp/7h-data` on Vercel)  |
@@ -65,6 +65,10 @@ npx vercel link && npx vercel --prod
 ### 1. Landing experience (`/`)
 - Hero: **“Press Your Sound on Vinyl. Zero Risk, Global Delivery.”** with a live quote card bound
   to the current configuration and an animated SVG record that changes size/shape for 7" singles.
+- **Sample pressings** (`/#samples`): every format and jacket style rendered as a product shot — a
+  black, a colour/splatter and a 7" record, plus standard jacket, gatefold and printed inner — drawn
+  from the live catalogue (`src/components/vinyl/VinylMockup.tsx`) so proportion, compound colour and
+  label size match what the plant presses. Tapping a sample loads it into the quote.
 - Ticker, four-step process, pressing-partner cards, audience grid, FAQ accordion, closing CTA.
 
 ### 2. Quote configurator (`/#configurator`)
@@ -98,7 +102,10 @@ Four steps with validation and a sticky live summary:
 Generated order ID (`7H-2026-XXXX`), deposit instructions per rail, order summary, live status of
 the management alerts, and the next-steps timeline.
 
-### 5. Operations console (`/admin`, code `7HADMIN`)
+### 5. Operations console (`/admin`, code from `ADMIN_PASSCODE`)
+
+The code is **never displayed** — not on the login screen, not in the server log. Six wrong attempts
+per IP lock the endpoint for ten minutes.
 - Summary tiles: pipeline value, orders, units, deposits collected, needs action, open alerts.
 - Order list with filters + detail panel: client, package, money, downloadable file links.
 - Actions: **mark deposit paid**, **forward to Mobineko / Green Lakes**, change status, copy the

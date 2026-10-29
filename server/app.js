@@ -441,11 +441,32 @@ api.get('/api/orders/:id', (req, res) => {
  * Admin
  * ------------------------------------------------------------------ */
 
+// The console code is never displayed anywhere, so give brute force a real wall:
+// 6 attempts per IP per 10 minutes, reset on success.
+const loginRate = new Map();
+function loginBlocked(ip) {
+  const now = Date.now();
+  const windowMs = 10 * 60_000;
+  const hits = (loginRate.get(ip) ?? []).filter((entry) => now - entry < windowMs);
+  loginRate.set(ip, hits);
+  return hits.length >= 6;
+}
+
 api.post('/api/admin/login', (req, res) => {
+  const ip = req.ip ?? 'unknown';
+  if (loginBlocked(ip)) {
+    return res
+      .status(429)
+      .json({ error: 'Too many attempts. Try again in ten minutes.' });
+  }
+
   const passcode = text(req.body?.passcode, 80);
   if (!passcode || passcode.toUpperCase() !== ADMIN_PASSCODE.toUpperCase()) {
+    loginRate.get(ip).push(Date.now());
     return res.status(401).json({ error: 'Incorrect access code.' });
   }
+
+  loginRate.delete(ip);
   res.json({ token: issueToken(), expiresIn: SESSION_TTL, operator: '7H Operations' });
 });
 
