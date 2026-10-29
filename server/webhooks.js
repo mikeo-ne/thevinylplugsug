@@ -669,12 +669,13 @@ export async function retryFailedAlerts({
         continue;
       }
 
-      result = retail
-        ? await deliverShopNotification(event.channel, order)
-        : await deliverNotification(event.channel, order);
-
-      if (event.payload?.receipt && retail) {
+      if (retail && event.payload?.receipt) {
+        // The buyer's own receipt, not the desk alert.
         result = await emailShopReceipt(order);
+      } else {
+        result = retail
+          ? await deliverShopNotification(event.channel, order)
+          : await deliverNotification(event.channel, order);
       }
 
       applyDelivery(event.id, result);

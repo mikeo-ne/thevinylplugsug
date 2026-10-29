@@ -286,6 +286,42 @@ db_.data.events.unshift({
 const secondPass = await retryFailedAlerts({ minAgeMs: 0 });
 check('an exhausted event is not retried again', secondPass.attempted === 0, JSON.stringify(secondPass));
 
+// Shop alerts are retried through the retail templates, not the pressing ones.
+const shopOrder = {
+  id: '7H-SHOP-RETRY1',
+  createdAt: new Date().toISOString(),
+  status: 'placed',
+  buyer: { name: 'Fan Buyer', email: 'fan@buyer.test', phone: '+256700000999', notes: '' },
+  items: [
+    { releaseId: 'badman', title: 'Badman', release: '7H-050', format: '12\" LP', priceUsd: 44, quantity: 1, lineTotal: 44 },
+  ],
+  records: 1,
+  subtotal: 44,
+  shipping: 3,
+  total: 47,
+  totals: { total: { ugx: 176_250 } },
+  delivery: { id: 'kampala', name: 'Kampala courier', requiresAddress: true, address: 'Ntinda', city: 'Kampala', country: 'Uganda' },
+  payment: { method: 'mtn_momo', status: 'pending' },
+};
+db_.data.shop.orders.unshift(shopOrder);
+db_.data.events.unshift({
+  id: 'evt_failed_shop',
+  orderId: shopOrder.id,
+  channel: 'email',
+  mode: 'live',
+  status: 'failed',
+  attempts: 1,
+  error: 'HTTP 429 — rate limited',
+  createdAt: new Date(Date.now() - 90_000).toISOString(),
+  lastAttemptAt: new Date(Date.now() - 90_000).toISOString(),
+});
+db_.save();
+const shopBefore = received.emails.length;
+const shopRetry = await retryFailedAlerts({ minAgeMs: 0, limit: 5 });
+check('a failed shop alert is retried', shopRetry.results.some((entry) => entry.id === 'evt_failed_shop' && entry.status === 'delivered'), JSON.stringify(shopRetry.results));
+const shopMail = received.emails[shopBefore];
+check('…through the fan-facing template', /SHOP/i.test(JSON.stringify(shopMail?.subject ?? '')), shopMail?.subject);
+
 /* ------------------------------------------------------------------ *
  * The cron endpoint
  * ------------------------------------------------------------------ */
