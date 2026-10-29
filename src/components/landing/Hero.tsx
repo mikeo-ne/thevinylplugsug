@@ -26,13 +26,13 @@ export function Hero() {
       <div className="pointer-events-none absolute -left-32 top-64 h-[420px] w-[420px] rounded-full bg-lime/[0.045] blur-[110px]" />
 
       <div className="container-x relative">
-        <div className="grid items-center gap-14 lg:grid-cols-[1.05fr_0.95fr] lg:gap-8">
-          <div className="animate-fade-up">
+        <div className="grid items-center gap-10 sm:gap-14 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] lg:gap-8">
+          <div className="min-w-0 animate-fade-up">
             <div className="eyebrow eyebrow-dot mb-7">
               Kampala brokerage · Overseas pressing
             </div>
 
-            <h1 className="display text-balance text-[clamp(2.6rem,6.2vw,4.6rem)] font-semibold">
+            <h1 className="display text-balance text-[clamp(2.05rem,6vw,4.6rem)] font-semibold">
               Press Your Sound
               <br />
               on <span className="relative inline-block text-lime">
@@ -51,14 +51,17 @@ export function Hero() {
               <span className="text-bone/90">Zero Risk, Global Delivery.</span>
             </h1>
 
-            <p className="mt-7 max-w-xl text-pretty text-[15px] leading-relaxed text-muted sm:text-base">
+            <p className="mt-6 max-w-xl text-pretty text-[14.5px] leading-relaxed text-muted sm:mt-7 sm:text-base">
               Professional turnkey vinyl production and brokerage for East African and international
               artists, powered by 7H Music Group. We handle mastering review, plant negotiation,
               freight and customs — you approve the proof.
             </p>
 
-            <div className="mt-9 flex flex-col gap-3 sm:flex-row sm:items-center">
-              <a href="#configurator" className="btn-lime group w-full sm:w-auto">
+            <div className="mt-8 flex flex-wrap items-center gap-2.5 sm:mt-9 sm:gap-3">
+              <a
+                href="#configurator"
+                className="btn-lime group px-5 py-3 text-[13.5px] sm:px-6 sm:py-3.5 sm:text-sm"
+              >
                 Build your quote
                 <Icon
                   name="arrow-right"
@@ -71,14 +74,14 @@ export function Hero() {
                 href={whatsappUrl()}
                 target="_blank"
                 rel="noreferrer"
-                className="btn-ghost w-full sm:w-auto"
+                className="btn-ghost px-5 py-3 text-[13.5px] sm:px-6 sm:py-3.5 sm:text-sm"
               >
                 <Icon name="whatsapp" size={17} filled />
                 Talk to a broker
               </a>
             </div>
 
-            <dl className="mt-12 grid grid-cols-2 gap-x-6 gap-y-7 border-t border-white/[0.07] pt-8 sm:grid-cols-4">
+            <dl className="mt-10 grid grid-cols-2 gap-x-6 gap-y-6 border-t border-white/[0.07] pt-7 sm:mt-12 sm:grid-cols-4 sm:gap-y-7 sm:pt-8">
               {stats.map((stat) => (
                 <div key={stat.label}>
                   <dt className="font-display text-[22px] font-semibold tracking-tight text-bone">
@@ -96,12 +99,12 @@ export function Hero() {
           </div>
 
           {/* vinyl showcase */}
-          <div className="relative mx-auto flex max-w-[520px] items-center justify-center lg:max-w-none">
+          <div className="relative mx-auto flex w-full min-w-0 max-w-[300px] items-center justify-center min-[420px]:max-w-[360px] sm:max-w-[440px] lg:max-w-none">
             <div className="absolute inset-0 rounded-full border border-white/[0.06]" />
             <div className="absolute inset-[12%] rounded-full border border-white/[0.05]" />
             <div className="absolute inset-[24%] rounded-full border border-lime/[0.08]" />
 
-            <div className="relative w-full max-w-[460px] animate-float">
+            <div className="relative w-full min-w-0 animate-float">
               <VinylDisc
                 size={isSingle ? 340 : 460}
                 label="7H"
@@ -111,15 +114,15 @@ export function Hero() {
             </div>
 
             {/* floating quote card */}
-            <div className="absolute -bottom-2 -left-1 w-[196px] rounded-2xl border border-white/10 bg-[#161615]/92 p-4 shadow-panel backdrop-blur-xl sm:left-2">
+            <div className="absolute -bottom-2 -left-1 w-[158px] rounded-xl border border-white/10 bg-[#161615]/92 p-3 shadow-panel backdrop-blur-xl sm:left-2 sm:w-[196px] sm:rounded-2xl sm:p-4">
               <div className="flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.16em] text-muted">
                 <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-lime" />
                 Live quote
               </div>
-              <div className="num mt-2 text-[26px] font-semibold leading-none text-bone">
+              <div className="num mt-2 text-[21px] font-semibold leading-none text-bone sm:text-[26px]">
                 {usd(animatedTotal)}
               </div>
-              <div className="mt-1 text-[11px] text-muted">{ugx(quote.totals.total.ugx)}</div>
+              <div className="mt-1 text-[10px] text-muted sm:text-[11px]">{ugx(quote.totals.total.ugx)}</div>
               <div className="mt-3 flex items-center justify-between border-t border-white/[0.08] pt-2.5 text-[10px] text-muted">
                 <span>{quote.quantity} units</span>
                 <span>{usd(quote.perUnit, { cents: true })}/ea</span>

@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 
-import { ADMIN_PASSCODE, IS_PRODUCTION, PORT } from './config.js';
+import { ADMIN_PASSCODE, DEFAULT_ADMIN_PASSCODE, IS_PRODUCTION, PORT } from './config.js';
 import { ROOT_DIR, ensureDirs } from './store.js';
 import api, { apiErrorHandler } from './app.js';
 
@@ -58,7 +58,16 @@ async function start() {
   server.listen(PORT, '0.0.0.0', () => {
     console.log(`\n  7H MUSIC GROUP — vinyl portal`);
     console.log(`  → http://0.0.0.0:${PORT}  (${IS_PRODUCTION ? 'production' : 'development'})`);
-    console.log(`  → admin access code: ${ADMIN_PASSCODE}\n`);
+    if (ADMIN_PASSCODE === DEFAULT_ADMIN_PASSCODE) {
+      // Never echo the code itself — anyone with the URL and this log could log in.
+      console.log(
+        IS_PRODUCTION
+          ? '  ⚠ using the built-in demo access code — set ADMIN_PASSCODE before sharing this link\n'
+          : '  → admin console ready (built-in demo code; set ADMIN_PASSCODE to change)\n',
+      );
+    } else {
+      console.log('  → admin console ready (custom ADMIN_PASSCODE set)\n');
+    }
   });
 }
 

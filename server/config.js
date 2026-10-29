@@ -2,7 +2,8 @@ import { DEFAULT_FX_UGX_PER_USD, MANAGEMENT_FEE_RATE, DEPOSIT_RATE } from '../sh
 
 export const PORT = Number(process.env.PORT ?? 4173);
 export const FX_UGX_PER_USD = Number(process.env.FX_UGX_PER_USD ?? DEFAULT_FX_UGX_PER_USD);
-export const ADMIN_PASSCODE = process.env.ADMIN_PASSCODE ?? '7HADMIN';
+export const DEFAULT_ADMIN_PASSCODE = '7HADMIN';
+export const ADMIN_PASSCODE = process.env.ADMIN_PASSCODE ?? DEFAULT_ADMIN_PASSCODE;
 export const SESSION_SECRET =
   process.env.SESSION_SECRET ?? `7h-vinyl-session::${ADMIN_PASSCODE}::v1`;
 export const SESSION_TTL = 8 * 60 * 60 * 1000; // 8 hours

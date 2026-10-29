@@ -3,7 +3,7 @@ import { Marquee } from '../components/landing/Marquee';
 import { Configurator } from '../components/landing/Configurator';
 import { Process } from '../components/landing/Process';
 import { Plants } from '../components/landing/Plants';
-import { RecentPressings } from '../components/landing/RecentPressings';
+import { VinylSamples } from '../components/landing/VinylSamples';
 import { Faq } from '../components/landing/Faq';
 import { CtaBand } from '../components/landing/CtaBand';
 
@@ -15,7 +15,7 @@ export function LandingPage() {
       <Configurator />
       <Process />
       <Plants />
-      <RecentPressings />
+      <VinylSamples />
       <Faq />
       <CtaBand />
     </main>

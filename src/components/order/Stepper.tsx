@@ -28,7 +28,7 @@ export function Stepper({ current, completed, onSelect }: StepperProps) {
                 onClick={() => reachable && onSelect(step.id)}
                 disabled={!reachable}
                 aria-current={active ? 'step' : undefined}
-                className={`group flex min-w-0 flex-1 items-center gap-2.5 rounded-full border px-2.5 py-2 text-left transition-all duration-300 sm:px-3.5 ${
+                className={`group flex min-w-0 flex-1 items-center justify-center gap-2 rounded-full border px-1.5 py-2 text-left transition-all duration-300 min-[400px]:justify-start min-[400px]:gap-2.5 min-[400px]:px-2.5 sm:px-3.5 ${
                   active
                     ? 'border-lime/50 bg-lime/[0.08]'
                     : done
@@ -55,7 +55,7 @@ export function Stepper({ current, completed, onSelect }: StepperProps) {
                   {step.label}
                 </span>
                 <span
-                  className={`truncate text-[11.5px] font-medium sm:hidden ${
+                  className={`hidden truncate text-[11px] font-medium min-[400px]:block sm:hidden ${
                     active ? 'text-bone' : 'text-muted'
                   }`}
                 >

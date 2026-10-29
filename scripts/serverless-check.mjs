@@ -134,6 +134,18 @@ try {
   const unknown = await json('/api/does-not-exist');
   check(unknown.status === 404, 'unknown API route returns JSON 404');
 
+  // Brute force must hit a wall: 6 wrong codes, then a lockout even for the right one.
+  let lastStatus = 0;
+  for (let attempt = 0; attempt < 7; attempt += 1) {
+    const res = await fetch(`${BASE}/api/admin/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ passcode: `nope-${attempt}` }),
+    });
+    lastStatus = res.status;
+  }
+  check(lastStatus === 429, 'admin login rate-limits repeated wrong codes');
+
   check(fs.existsSync(TEST_DATA), 'store writes to the configured /tmp data dir');
   check(fs.existsSync(TEST_UPLOADS), 'uploads dir created under /tmp');
 } catch (error) {

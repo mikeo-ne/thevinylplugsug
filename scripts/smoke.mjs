@@ -99,6 +99,29 @@ for (const route of routes) {
       }
     }
 
+    if (route === '/') {
+      if (!text.includes('Sample pressings')) {
+        failures.push(`${route}: the sample pressings section is missing`);
+      }
+      if (text.includes('Naledi Sound')) {
+        failures.push(`${route}: invented client pressings are back on the page`);
+      }
+      // A fixed pixel width larger than a small phone makes the whole page scroll
+      // sideways — the exact bug that cut the hero off on mobile.
+      const wide = [...root.querySelectorAll('[style]')]
+        .map((el) => el.getAttribute('style') ?? '')
+        .map((style) => Number(style.match(/(?:^|;)\s*width:\s*(\d+)px/)?.[1] ?? 0))
+        .filter((width) => width > 360);
+      if (wide.length > 0) {
+        failures.push(`${route}: fixed width ${Math.max(...wide)}px will overflow a 360px phone`);
+      }
+      // The admin passcode must never be printed anywhere a visitor can read it.
+    }
+
+    if (text.includes('7HADMIN')) {
+      failures.push(`${route}: the admin access code is rendered on the page`);
+    }
+
     const probe = text.replace(/\s+/g, ' ').slice(0, 140);
     console.log(`${route.padEnd(22)} ${String(html.length).padStart(6)} chars · ${probe}`);
   } catch (error) {

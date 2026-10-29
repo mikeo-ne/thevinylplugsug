@@ -5,7 +5,7 @@ import { useConfig } from '../../hooks/useConfig';
 import { useAnimatedNumber } from '../../hooks/useAnimatedNumber';
 import { Icon } from '../ui/Icon';
 import { usd, ugx } from '../../lib/format';
-import { VinylDisc } from '../ui/VinylDisc';
+import { VinylMockup } from '../vinyl/VinylMockup';
 import { quoteFor } from '../../lib/pricing';
 
 function StepHeader({ index, title, hint }: { index: string; title: string; hint: string }) {
@@ -33,9 +33,6 @@ export function Configurator() {
     return Math.max(0, shortRun.perUnit - quote.perUnit);
   }, [configuration, quote.perUnit, fxRate]);
 
-  const isSingle = configuration.vinylTypeId === 'seven_single';
-  const accent =
-    configuration.vinylTypeId === 'lp_colored' ? '#CCFF00' : configuration.vinylTypeId === 'lp_standard' ? '#E4E4DC' : '#CCFF00';
 
   return (
     <section id="configurator" className="relative scroll-mt-24 border-y border-white/[0.06] bg-[#0F0F0E] py-16 lg:py-24">
@@ -249,15 +246,15 @@ export function Configurator() {
                       ≈ {ugx(quote.totals.total.ugx)}
                     </div>
                   </div>
-                  <div className="hidden shrink-0 sm:block">
-                    <VinylDisc
-                      size={isSingle ? 78 : 96}
-                      spinning={false}
-                      accent={accent}
-                      label="7H"
-                      sublabel=""
-                      variant={isSingle ? 'seven' : configuration.vinylTypeId === 'lp_standard' ? 'standard' : 'colored'}
+                  <div className="hidden w-[132px] shrink-0 sm:block">
+                    <VinylMockup
+                      vinylTypeId={configuration.vinylTypeId}
+                      sleeveId={configuration.sleeveId}
+                      className="aspect-[384/300] w-full"
                     />
+                    <div className="mt-1 text-center text-[9px] uppercase tracking-[0.14em] text-muted">
+                      Your build
+                    </div>
                   </div>
                 </div>
 

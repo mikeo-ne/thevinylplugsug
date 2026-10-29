@@ -7,7 +7,8 @@ independent Kampala act — and to run the demo without a hitch.
 
 ## 1. Before you send the link (5 minutes)
 
-- [ ] `ADMIN_PASSCODE` is no longer `7HADMIN`. Vercel → Project → Settings → Environment Variables,
+- [ ] `ADMIN_PASSCODE` is set to something only you know (it is never shown on the site or in logs).
+      Vercel → Project → Settings → Environment Variables,
       then redeploy.
 - [ ] One alert channel is live, so an order pings your phone during the demo. The fastest is Slack
       (`SLACK_WEBHOOK_URL`); email via Resend is second. See [DEPLOYMENT.md § Notifications](./DEPLOYMENT.md#notifications).
