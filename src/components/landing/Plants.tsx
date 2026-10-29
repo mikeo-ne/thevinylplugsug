@@ -5,7 +5,7 @@ const plants = [
   {
     id: 'mobineko',
     name: 'Mobineko',
-    region: 'Japan · worldwide fulfilment',
+    region: 'Taiwan · worldwide fulfilment',
     blurb:
       'Our primary partner for colour vinyl and gatefold work. Known for tight tolerances, immaculate print and reliable dispatch to East Africa.',
     specs: ['140g & 180g black', 'Colour / splatter runs', 'Gatefold & inner sleeves', 'Consolidated air freight'],
@@ -14,10 +14,10 @@ const plants = [
   {
     id: 'greenlakes',
     name: 'Green Lakes Pressing',
-    region: 'USA · eco vinyl specialists',
+    region: 'Lithuania · EU eco vinyl specialists',
     blurb:
-      'Used for US-based artists and eco-conscious releases. Recycled compound vinyl, bio-wrap and direct-to-tour-city shipping.',
-    specs: ['Recycled eco vinyl', 'Bio-degradable wrap', 'Direct US dispatch', 'Short-run friendly'],
+      'Our EU partner for eco-conscious releases: recycled compound vinyl, bio-wrap and dispatch into Europe or consolidated on to Kampala.',
+    specs: ['Recycled eco vinyl', 'Bio-degradable wrap', 'Direct EU dispatch', 'Short-run friendly'],
     lead: '7–10 weeks',
   },
 ];

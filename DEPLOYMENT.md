@@ -70,8 +70,8 @@ and a failed hand-off shows as `failed` in the console with a one-click retry.
 
 | Variable | Example | Notes |
 | --- | --- | --- |
-| `PLANT_MOBINEKO_EMAIL` | `orders@mobineko.com` | Where Mobineko order requests go |
-| `PLANT_GREENLAKES_EMAIL` | `orders@greenlakespressing.com` | Where Green Lakes order requests go |
+| `PLANT_MOBINEKO_EMAIL` | `web@mobineko.com` | Where Mobineko order requests go (published inbox — replace with your account rep once one is assigned) |
+| `PLANT_GREENLAKES_EMAIL` | `hi@greenlakespressing.com` | Where Green Lakes order requests go (customer-service inbox — replace with your account rep once one is assigned) |
 | `PLANT_ORDERS_EMAIL` | — | Catch-all used when a plant has no address of its own |
 | `PLANT_AUTO_FORWARD` | `true` (default) | `false` restores the manual "Forward" button |
 | `PLANT_FORWARD_ON_ORDER` | `false` (default) | `true` releases on submission, before the deposit |

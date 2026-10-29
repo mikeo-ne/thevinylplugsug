@@ -38,8 +38,8 @@ independent Kampala act — and to run the demo without a hitch.
 
 > **First-contact version — for a label or an act you haven't worked with**
 >
-> Hi [Name] — 7H Music Group here, we broker vinyl pressing out of Kampala (Mobineko in Japan, Green
-> Lakes in the US).
+> Hi [Name] — 7H Music Group here, we broker vinyl pressing out of Kampala (Mobineko in Taiwan, Green
+> Lakes in Lithuania).
 >
 > We put our pricing on a public calculator instead of a PDF: quantity, colour, sleeve — the true
 > landed factory cost, our flat 25%, and the 50% deposit, in USD and UGX.

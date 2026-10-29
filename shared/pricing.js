@@ -89,7 +89,7 @@ export const PRESSING_PLANTS = [
   {
     id: 'mobineko',
     name: 'Mobineko',
-    region: 'Japan · worldwide fulfilment',
+    region: 'Taiwan · worldwide fulfilment',
     // Where the spec sheet is emailed when an order clears deposit. Leave blank
     // until the plant confirms the address; the console then shows the hand-off
     // as "needs an order address" instead of pretending it was sent.
@@ -98,7 +98,7 @@ export const PRESSING_PLANTS = [
   {
     id: 'greenlakes',
     name: 'Green Lakes Pressing',
-    region: 'USA · eco vinyl specialists',
+    region: 'Lithuania · EU eco vinyl specialists',
     ordersEmail: process.env.PLANT_GREENLAKES_EMAIL ?? null,
   },
 ];
