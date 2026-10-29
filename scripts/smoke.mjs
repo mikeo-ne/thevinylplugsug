@@ -107,6 +107,20 @@ for (const route of routes) {
       }
     }
 
+    // The pressing checkout has to capture a courier-complete address and say
+    // plainly that the run is made to order, shipped from the plant.
+    if (route === '/order') {
+      for (const label of ['Recipient full name', 'Street address / plot number', 'Region / state / county', 'Postal / ZIP code']) {
+        if (!text.includes(label)) failures.push(`${route}: address field "${label}" is missing`);
+      }
+      if (!text.includes('Custom On-Demand Manufacturing')) {
+        failures.push(`${route}: the on-demand manufacturing notice is missing`);
+      }
+      if (!text.includes('shipped directly from our international production facilities straight to your doorstep')) {
+        failures.push(`${route}: the on-demand notice copy has drifted`);
+      }
+    }
+
     if (route === '/') {
       if (!text.includes('Sample pressings')) {
         failures.push(`${route}: the sample pressings section is missing`);
