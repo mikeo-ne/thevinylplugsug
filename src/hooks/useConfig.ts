@@ -30,6 +30,12 @@ const fallback: CompanyConfig = {
   vinylTypes,
   sleeves,
   plants,
+  limits: {
+    maxUploadMb: 80,
+    maxFiles: 6,
+    audio: ['.wav', '.aif', '.aiff', '.flac', '.mp3', '.m4a', '.aac'],
+    artwork: ['.pdf', '.jpg', '.jpeg', '.png', '.tif', '.tiff'],
+  },
   paymentMethods: [
     {
       id: 'mtn_momo',

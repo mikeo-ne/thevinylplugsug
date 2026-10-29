@@ -12,13 +12,14 @@ Mono, glass panels, scroll reveals and a pure-SVG spinning record.
 
 ## Stack
 
-| Layer      | Choice                                                             |
-| ---------- | ------------------------------------------------------------------ |
-| Frontend   | React 18 + TypeScript + Vite, React Router 6, Tailwind CSS 3        |
-| Backend    | Node 22, Express 4, Multer (disk uploads)                           |
-| Pricing    | `shared/pricing.js` — one module imported by **both** client & server |
-| Storage    | JSON file store (`data/db.json`) + uploads on disk — zero setup     |
-| Dev server | Single port: Vite in middleware mode behind Express (port `4173`)   |
+| Layer      | Choice                                                               |
+| ---------- | -------------------------------------------------------------------- |
+| Frontend   | React 18 + TypeScript + Vite, React Router 6, Tailwind CSS 3          |
+| Backend    | Node 22, Express 4, Multer (disk uploads)                             |
+| Pricing    | `shared/pricing.js` — one module imported by **both** client & server  |
+| Storage    | JSON file store (`data/db.json`) + uploads on disk — zero setup       |
+| Dev server | Single port: Vite in middleware mode behind Express (port `4173`)     |
+| Deploy     | Vercel: static `dist/` + one catch-all serverless function (`api/`)    |
 
 ```
 npm install
@@ -34,11 +35,28 @@ npm start        # serves dist/ + /api from one Express process
 
 ### Environment
 
-| Variable          | Default  | Purpose                                  |
-| ----------------- | -------- | ---------------------------------------- |
-| `PORT`            | `4173`   | HTTP port                                |
-| `FX_UGX_PER_USD`  | `3750`   | Indicative FX rate used on every quote   |
-| `ADMIN_PASSCODE`  | `7HADMIN`| Access code for the operations console   |
+Copy `.env.example` if you want to override defaults locally.
+
+| Variable          | Default     | Purpose                                        |
+| ----------------- | ----------- | ---------------------------------------------- |
+| `PORT`            | `4173`      | HTTP port (standalone server)                  |
+| `FX_UGX_PER_USD`  | `3750`      | Indicative FX rate used on every quote         |
+| `ADMIN_PASSCODE`  | `7HADMIN`   | Access code for the operations console         |
+| `SESSION_SECRET`  | derived     | Signs stateless admin tokens — set in production |
+| `MAX_UPLOAD_MB`   | `80` (`4` on Vercel) | Per-file upload cap advertised to the client |
+| `DATA_DIR`        | `./data`    | JSON store location (`/tmp/7h-data` on Vercel)  |
+| `UPLOAD_DIR`      | `./uploads` | Upload location (`/tmp/7h-uploads` on Vercel)   |
+
+## Deploy to Vercel
+
+`vercel.json` + `api/[...path].js` ship ready. Import the repo in Vercel, set `ADMIN_PASSCODE` and
+`SESSION_SECRET`, and deploy — no build tweaks required. Full walkthrough, environment table,
+platform limits (4 MB uploads, ephemeral `/tmp`) and the upgrade path to Vercel Blob + Postgres live
+in **[DEPLOYMENT.md](./DEPLOYMENT.md)**.
+
+```bash
+npx vercel link && npx vercel --prod
+```
 
 ---
 
@@ -132,9 +150,13 @@ session, in-memory).
 ## Project layout
 
 ```
+api/[...path].js           # Vercel serverless entry (wraps the Express app)
+vercel.json                # build, SPA rewrite, cache headers, function limits
 shared/pricing.js          # single source of truth for catalogue + maths (client & server)
 server/
-  index.js                 # Express API, uploads, Vite middleware / static hosting
+  app.js                   # Express router: all /api routes, uploads, validation
+  index.js                 # standalone server: API + Vite middleware / static dist
+  auth.js                  # stateless HMAC admin sessions
   store.js                 # JSON store, demo seed, order ID generator
   webhooks.js              # simulated alert fan-out, plant payload, forwarding
   config.js                # env config, company details, payment rails
@@ -146,16 +168,18 @@ src/
   store/DraftContext.tsx   # configuration + client draft (sessionStorage)
 scripts/smoke.mjs          # renders every route in jsdom, asserts no runtime errors
 scripts/flow.mjs           # drives the full order flow in jsdom and verifies the API/admin
+scripts/serverless-check.mjs # boots api/[...path].js with VERCEL=1 and checks the endpoints
+.github/workflows/ci.yml   # typecheck → build → serverless checks → smoke → flow
 ```
 
 ## Tests
 
-With the dev server running:
-
 ```
-node scripts/smoke.mjs     # route render smoke test
-node scripts/flow.mjs      # end-to-end order placement (cleans up after itself)
-npx tsc --noEmit           # type-check
+npm run typecheck          # tsc --noEmit
+npm run test:serverless    # self-contained: boots the Vercel handler on an isolated /tmp store
+node scripts/smoke.mjs     # route render smoke test (needs the app on :4173)
+node scripts/flow.mjs      # end-to-end order placement + admin verification (needs :4173)
+npm test                   # typecheck + serverless checks
 ```
 
 ## Notes
@@ -167,3 +191,7 @@ npx tsc --noEmit           # type-check
 - Rates and per-unit factory costs in `shared/pricing.js` are indicative and should be refreshed
   against plant quotes before invoicing.
 - `data/` and `uploads/` are git-ignored; the store seeds two demo orders on first boot.
+- On Vercel those directories move to `/tmp` (ephemeral). For persistent orders and files, follow
+  the two-step storage swap in [DEPLOYMENT.md](./DEPLOYMENT.md#going-to-real-production-storage).
+- Admin sessions are HMAC-signed with `SESSION_SECRET` rather than stored server-side, so they
+  survive across serverless instances; rotate the secret to invalidate every session.

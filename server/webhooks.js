@@ -179,6 +179,37 @@ export function emitOrderEvents(order) {
   return events;
 }
 
+/**
+ * Promote simulated webhook deliveries that have outlived their channel delay.
+ *
+ * Timers cover the standalone server, but serverless functions can be frozen the
+ * moment a response is sent — so the alert log is reconciled from timestamps at
+ * read time. Safe to call on every request.
+ */
+export function reconcileEvents(now = Date.now()) {
+  const db = db_.data;
+  let changed = false;
+
+  for (const event of db.events) {
+    if (event.status !== 'pending' && event.status !== 'queued') continue;
+    const meta = getChannelMeta(event.channel);
+    if (!meta.autoDeliver) continue;
+
+    const base = new Date(event.lastAttemptAt ?? event.createdAt).getTime();
+    const delay = meta.delay ?? 1200;
+    if (Number.isNaN(base) || now - base < delay) continue;
+
+    event.status = 'delivered';
+    event.httpStatus = 200;
+    event.attempts = (event.attempts ?? 0) + 1;
+    event.deliveredAt = new Date(base + delay).toISOString();
+    changed = true;
+  }
+
+  if (changed) db_.save();
+  return changed;
+}
+
 export function forwardOrderToPlant(order, plantId, actor = 'management') {
   const plant = PRESSING_PLANTS.find((item) => item.id === plantId) ?? PRESSING_PLANTS[0];
   order.plantPreference = plant.id;

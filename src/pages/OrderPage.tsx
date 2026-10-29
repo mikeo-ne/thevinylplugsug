@@ -369,6 +369,10 @@ export function OrderPage() {
                     <Icon name="shield" size={13} className="mr-1.5 inline text-lime" />
                     We run a 24-hour technical check on every upload — sample rate, phase and print
                     bleed. Nothing is sent to the factory until you approve the proof.
+                    <span className="mt-1.5 block text-muted/80">
+                      Direct uploads are capped at {config.limits?.maxUploadMb ?? 80}MB per file; for
+                      long masters, paste a WeTransfer or Drive link below.
+                    </span>
                   </div>
 
                   <FileDropzone
@@ -380,6 +384,7 @@ export function OrderPage() {
                     onLinkChange={(value) => setFiles({ audioLink: value })}
                     linkError={errors.audioLink}
                     error={errors.audio}
+                    maxMb={config.limits?.maxUploadMb ?? 80}
                   />
 
                   <div className="h-px bg-white/[0.07]" />
@@ -393,6 +398,7 @@ export function OrderPage() {
                     onLinkChange={(value) => setFiles({ artworkLink: value })}
                     linkError={errors.artworkLink}
                     error={errors.artwork}
+                    maxMb={config.limits?.maxUploadMb ?? 80}
                   />
 
                   {(files.audio.length > 0 || files.artwork.length > 0) && (

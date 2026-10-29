@@ -6,8 +6,15 @@ import { calculateQuote } from '../shared/pricing.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const ROOT_DIR = path.resolve(__dirname, '..');
-export const DATA_DIR = path.join(ROOT_DIR, 'data');
-export const UPLOAD_DIR = path.join(ROOT_DIR, 'uploads');
+// Vercel functions only allow writes under /tmp, so the demo store and uploads
+// fall back there automatically. Override with DATA_DIR / UPLOAD_DIR.
+const fallbackRoot = process.env.VERCEL ? '/tmp' : ROOT_DIR;
+export const DATA_DIR = process.env.DATA_DIR
+  ? path.resolve(process.env.DATA_DIR)
+  : path.join(fallbackRoot, process.env.VERCEL ? '7h-data' : 'data');
+export const UPLOAD_DIR = process.env.UPLOAD_DIR
+  ? path.resolve(process.env.UPLOAD_DIR)
+  : path.join(fallbackRoot, process.env.VERCEL ? '7h-uploads' : 'uploads');
 
 const DB_FILE = path.join(DATA_DIR, 'db.json');
 
@@ -22,7 +29,7 @@ const emptyDb = () => ({
 let db = null;
 let writeChain = Promise.resolve();
 
-function ensureDirs() {
+export function ensureDirs() {
   fs.mkdirSync(DATA_DIR, { recursive: true });
   fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 }
@@ -217,7 +224,7 @@ function load() {
       return db;
     }
   } catch (error) {
-    console.error('[store] Could not read db.json, starting fresh.', error.message);
+    console.warn('[store] Could not read db.json, starting fresh.', error.message);
   }
   db = seedDemo(emptyDb());
   persist();
@@ -232,7 +239,7 @@ function persist() {
       await fs.promises.writeFile(tmp, snapshot, 'utf8');
       await fs.promises.rename(tmp, DB_FILE);
     } catch (error) {
-      console.error('[store] Failed to persist db.json', error.message);
+      console.warn('[store] Could not persist db.json (running in memory):', error.message);
     }
   });
   return writeChain;

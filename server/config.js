@@ -3,7 +3,18 @@ import { DEFAULT_FX_UGX_PER_USD, MANAGEMENT_FEE_RATE, DEPOSIT_RATE } from '../sh
 export const PORT = Number(process.env.PORT ?? 4173);
 export const FX_UGX_PER_USD = Number(process.env.FX_UGX_PER_USD ?? DEFAULT_FX_UGX_PER_USD);
 export const ADMIN_PASSCODE = process.env.ADMIN_PASSCODE ?? '7HADMIN';
+export const SESSION_SECRET =
+  process.env.SESSION_SECRET ?? `7h-vinyl-session::${ADMIN_PASSCODE}::v1`;
+export const SESSION_TTL = 8 * 60 * 60 * 1000; // 8 hours
 export const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+export const IS_SERVERLESS = Boolean(process.env.VERCEL);
+
+// Vercel caps serverless request bodies at 4.5MB, so the API advertises a lower
+// direct-upload limit there and clients fall back to WeTransfer/Drive links.
+export const MAX_UPLOAD_MB = Math.max(
+  1,
+  Number(process.env.MAX_UPLOAD_MB ?? (process.env.VERCEL ? 4 : 80)),
+);
 
 export const COMPANY = {
   name: '7H Music Group',

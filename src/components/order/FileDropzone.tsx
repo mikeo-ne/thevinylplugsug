@@ -13,6 +13,7 @@ interface FileDropzoneProps {
   onLinkChange: (value: string) => void;
   linkError?: string;
   error?: string;
+  maxMb?: number;
 }
 
 const ACCEPT = {
@@ -46,12 +47,17 @@ export function FileDropzone({
   onLinkChange,
   linkError,
   error,
+  maxMb = 80,
 }: FileDropzoneProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const [progress, setProgress] = useState<Record<string, number>>({});
   const [uploadError, setUploadError] = useState<string | null>(null);
   const copy = COPY[kind];
+  const copyHint =
+    maxMb <= 10
+      ? `WAV / AIFF / FLAC · direct uploads capped at ${maxMb}MB — use a link for long masters`
+      : copy.hint;
 
   const upload = useCallback(
     async (incoming: File[]) => {
@@ -100,9 +106,9 @@ export function FileDropzone({
   const handleFiles = (fileList: FileList | null) => {
     if (!fileList) return;
     const incoming = Array.from(fileList);
-    const tooBig = incoming.find((file) => file.size > 80 * 1024 * 1024);
+    const tooBig = incoming.find((file) => file.size > maxMb * 1024 * 1024);
     if (tooBig) {
-      setUploadError(`"${tooBig.name}" is over 80MB. Use a download link instead.`);
+      setUploadError(`"${tooBig.name}" is over ${maxMb}MB. Use a WeTransfer or Drive link instead.`);
       return;
     }
     void upload(incoming);
@@ -115,7 +121,7 @@ export function FileDropzone({
           <Icon name={copy.icon} size={17} className="text-lime" />
           <h3 className="text-[14px] font-medium text-bone">{copy.title}</h3>
         </div>
-        <span className="text-[11px] text-muted">{copy.hint}</span>
+        <span className="text-right text-[11px] text-muted">{copyHint}</span>
       </div>
 
       <div

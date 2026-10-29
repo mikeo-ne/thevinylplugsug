@@ -94,6 +94,12 @@ export interface CompanyConfig {
   sleeves: SleeveOption[];
   paymentMethods: PaymentMethod[];
   plants: Plant[];
+  limits?: {
+    maxUploadMb: number;
+    maxFiles: number;
+    audio: string[];
+    artwork: string[];
+  };
 }
 
 export interface UploadedFile {
