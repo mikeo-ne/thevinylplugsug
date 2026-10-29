@@ -272,7 +272,10 @@ export function Configurator() {
               </div>
 
               <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                <PlantFact label="Minimum run" value={`${quote.plant.moq} units`} />
+                <PlantFact
+                  label="Minimum run"
+                  value={`${quote.plant.moq.toLocaleString('en-US')} ${quote.plant.moq === 1 ? 'unit' : 'units'}`}
+                />
                 <PlantFact label="Factory lead time" value={quote.plant.leadTime} />
                 <PlantFact
                   label="Rate card"

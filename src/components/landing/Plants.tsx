@@ -50,7 +50,9 @@ export function Plants() {
                 <dl className="relative mt-6 grid grid-cols-2 gap-2 border-t border-white/[0.08] pt-4 text-[11px]">
                   <div>
                     <dt className="uppercase tracking-[0.14em] text-muted">Minimum run</dt>
-                    <dd className="num mt-1 text-bone">{plant.moq.toLocaleString('en-US')} units</dd>
+                    <dd className="num mt-1 text-bone">
+                      {plant.moq.toLocaleString('en-US')} {plant.moq === 1 ? 'unit' : 'units'}
+                    </dd>
                   </div>
                   <div className="text-right">
                     <dt className="uppercase tracking-[0.14em] text-muted">Lead time</dt>
