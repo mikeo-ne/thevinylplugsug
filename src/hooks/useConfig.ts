@@ -73,6 +73,28 @@ const fallback: CompanyConfig = {
 let cache: CompanyConfig | null = null;
 let inflight: Promise<CompanyConfig> | null = null;
 
+/**
+ * Never trust the response shape: if a deploy misroutes `/api/config` to the
+ * SPA shell (HTML instead of JSON) we fall back to local pricing rather than
+ * crashing the configurator.
+ */
+function isCompanyConfig(value: unknown): value is CompanyConfig {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Partial<CompanyConfig>;
+  return (
+    Array.isArray(candidate.vinylTypes) &&
+    candidate.vinylTypes.length > 0 &&
+    Array.isArray(candidate.sleeves) &&
+    candidate.sleeves.length > 0 &&
+    Array.isArray(candidate.paymentMethods) &&
+    candidate.paymentMethods.length > 0 &&
+    Array.isArray(candidate.quantities) &&
+    Array.isArray(candidate.plants) &&
+    typeof candidate.fxRate === 'number' &&
+    Boolean(candidate.company)
+  );
+}
+
 export function useConfig() {
   const [config, setConfig] = useState<CompanyConfig | null>(cache);
   const [error, setError] = useState<string | null>(null);
@@ -84,6 +106,9 @@ export function useConfig() {
     inflight ??= api.config();
     inflight
       .then((result) => {
+        if (!isCompanyConfig(result)) {
+          throw new Error('Malformed /api/config response');
+        }
         cache = result;
         if (active) setConfig(result);
       })

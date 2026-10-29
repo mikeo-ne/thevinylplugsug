@@ -2,7 +2,7 @@
  * 7H Music Group — Express API router.
  *
  * Shared by the standalone server (`server/index.js`) and the Vercel
- * serverless handler (`api/[...path].js`), so both runtimes expose exactly the
+ * serverless handler (`api/index.js`), so both runtimes expose exactly the
  * same endpoints.
  */
 import express from 'express';
@@ -157,8 +157,16 @@ api.get('/api/files/:id/download', (req, res) => {
  * Public config + quoting
  * ------------------------------------------------------------------ */
 
-api.get('/api/health', (_req, res) => {
-  res.json({ ok: true, service: '7h-vinyl-api', time: new Date().toISOString() });
+api.get('/api/health', (req, res) => {
+  // `path`/`query` make it obvious whether a proxy or rewrite mangled the URL.
+  res.json({
+    ok: true,
+    service: '7h-vinyl-api',
+    time: new Date().toISOString(),
+    runtime: process.env.VERCEL ? 'vercel' : 'node',
+    path: req.path,
+    query: Object.keys(req.query),
+  });
 });
 
 api.get('/api/config', (_req, res) => {
@@ -582,6 +590,12 @@ api.get('/api/admin/orders/:id/payload', requireAdmin, (req, res) => {
 /* ------------------------------------------------------------------ *
  * Errors
  * ------------------------------------------------------------------ */
+
+// Unknown API routes answer with JSON (never the SPA shell), so a mistyped
+// endpoint can't be mistaken for a successful HTML response.
+api.use('/api', (_req, res) => {
+  res.status(404).json({ error: 'API route not found.' });
+});
 
 export function apiErrorHandler(err, _req, res, _next) {
   if (res.headersSent) return;
