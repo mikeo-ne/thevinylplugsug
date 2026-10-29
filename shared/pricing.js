@@ -86,8 +86,21 @@ export const SLEEVE_OPTIONS = [
 ];
 
 export const PRESSING_PLANTS = [
-  { id: 'mobineko', name: 'Mobineko', region: 'Japan · worldwide fulfilment' },
-  { id: 'greenlakes', name: 'Green Lakes Pressing', region: 'USA · eco vinyl specialists' },
+  {
+    id: 'mobineko',
+    name: 'Mobineko',
+    region: 'Japan · worldwide fulfilment',
+    // Where the spec sheet is emailed when an order clears deposit. Leave blank
+    // until the plant confirms the address; the console then shows the hand-off
+    // as "needs an order address" instead of pretending it was sent.
+    ordersEmail: process.env.PLANT_MOBINEKO_EMAIL ?? null,
+  },
+  {
+    id: 'greenlakes',
+    name: 'Green Lakes Pressing',
+    region: 'USA · eco vinyl specialists',
+    ordersEmail: process.env.PLANT_GREENLAKES_EMAIL ?? null,
+  },
 ];
 
 /** @param {unknown} value */

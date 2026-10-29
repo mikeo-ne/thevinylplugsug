@@ -165,6 +165,14 @@ export interface Order {
   };
   files: DraftFiles;
   plantPreference?: string;
+  plantHandoff?: {
+    plant: string;
+    at: string;
+    mode: string;
+    status: string;
+    by: string;
+    error: string | null;
+  };
   plantPayload?: PlantPayload;
   plantPayloadText?: string;
   statusHistory?: { status: string; at: string; by: string; note: string }[];
@@ -244,5 +252,13 @@ export interface AdminOverview {
   notifications?: {
     configured: boolean;
     channels: { channel: string; live: boolean; detail: string }[];
+  };
+  automation?: {
+    autoForward: boolean;
+    forwardOnOrder: boolean;
+    plantEmail: boolean;
+    plantWebhook: boolean;
+    whatsappTemplate?: { name: string; language: string; category: string; body: string; parameters: number };
+    plants: { id: string; name: string; ordersEmail: string | null }[];
   };
 }

@@ -32,6 +32,8 @@ import {
 import { issueToken, requireAdmin } from './auth.js';
 import { db_, ensureDirs, newOrderId, newId, UPLOAD_DIR } from './store.js';
 import {
+  automationConfig,
+  autoForwardOrder,
   buildPlantPayload,
   emitOrderEvents,
   emitTestEvent,
@@ -359,6 +361,10 @@ api.post('/api/orders', async (req, res) => {
   order.plantPayload = buildPlantPayload(order);
   db_.save();
   await emitOrderEvents(order);
+  if (automationConfig().forwardOnOrder) {
+    // Opt-in: plants that only open a queue once the paperwork lands.
+    await autoForwardOrder(order, { trigger: 'order' });
+  }
 
   res.status(201).json({
     order: {
@@ -521,6 +527,14 @@ api.get('/api/admin/overview', requireAdmin, (_req, res) => {
       configured: notificationsConfigured(),
       channels: notificationChannels(),
     },
+    automation: {
+      ...automationConfig(),
+      plants: PRESSING_PLANTS.map((plant) => ({
+        id: plant.id,
+        name: plant.name,
+        ordersEmail: plant.ordersEmail ?? null,
+      })),
+    },
   });
 });
 
@@ -577,7 +591,7 @@ api.post('/api/admin/orders/:id/forward', requireAdmin, async (req, res) => {
   res.json({ order: decorateOrder(updated), plant });
 });
 
-api.post('/api/admin/orders/:id/payment', requireAdmin, (req, res) => {
+api.post('/api/admin/orders/:id/payment', requireAdmin, async (req, res) => {
   const db = db_.data;
   const order = db.orders.find((item) => item.id === req.params.id);
   if (!order) return res.status(404).json({ error: 'Order not found.' });
@@ -587,7 +601,14 @@ api.post('/api/admin/orders/:id/payment', requireAdmin, (req, res) => {
   order.payment.depositPaidUsd = Number(amount) > 0 ? Number(amount) : order.quote.deposit;
   order.status = order.status === 'received' ? 'confirmed' : order.status;
   db_.save();
-  res.json({ order: decorateOrder(order) });
+
+  // Deposit confirmed → the production request goes to the plant on its own.
+  const release = await autoForwardOrder(order, { trigger: 'deposit' });
+
+  res.json({
+    order: decorateOrder(db.orders.find((item) => item.id === order.id) ?? order),
+    release: release.skipped ? release : { plant: release.plant.name, delivery: release.delivery },
+  });
 });
 
 api.post('/api/admin/events/:id/retry', requireAdmin, async (req, res) => {

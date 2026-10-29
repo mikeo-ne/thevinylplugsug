@@ -55,6 +55,52 @@ openssl rand -hex 32
 
 Redeploy after changing env vars — Vercel does not restart functions automatically.
 
+### Automation — order → alerts → plant, no manual steps
+
+The pipeline runs itself. What happens, in order:
+
+| When | What fires | Needs |
+| --- | --- | --- |
+| Client submits an order | Email to the desk + WhatsApp to management (Slack too, if wired) | `RESEND_API_KEY`, `NOTIFY_EMAIL_TO` · `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_ID`, `NOTIFY_WHATSAPP_TO` |
+| You confirm the deposit in `/admin` | The production request is **emailed to the plant** with file links, and POSTed to their endpoint if you have one | `PLANT_MOBINEKO_EMAIL` / `PLANT_GREENLAKES_EMAIL` + `RESEND_API_KEY` |
+| Order submitted (optional) | Release straight away instead of waiting for the deposit | `PLANT_FORWARD_ON_ORDER=true` |
+
+Everything is idempotent: confirming the deposit twice never sends the plant a second copy,
+and a failed hand-off shows as `failed` in the console with a one-click retry.
+
+| Variable | Example | Notes |
+| --- | --- | --- |
+| `PLANT_MOBINEKO_EMAIL` | `orders@mobineko.com` | Where Mobineko order requests go |
+| `PLANT_GREENLAKES_EMAIL` | `orders@greenlakespressing.com` | Where Green Lakes order requests go |
+| `PLANT_ORDERS_EMAIL` | — | Catch-all used when a plant has no address of its own |
+| `PLANT_AUTO_FORWARD` | `true` (default) | `false` restores the manual "Forward" button |
+| `PLANT_FORWARD_ON_ORDER` | `false` (default) | `true` releases on submission, before the deposit |
+| `PLANT_WEBHOOK_URL` | — | Optional JSON endpoint, used in addition to email |
+
+The desk is BCC'd on every plant email, so a plant's reply always has a home. Verify the whole
+chain without credentials: `npm run test:automation` (35 checks against a local sink).
+
+### WhatsApp template
+
+Business-initiated WhatsApp messages must use a pre-approved template. The app sends
+`WHATSAPP_TEMPLATE_NAME` (default `new_vinyl_order`) with five body parameters, and falls back to
+plain text if the template is not approved yet — which only works inside an open 24-hour window.
+
+Submit this in Meta Business Suite → WhatsApp Manager → Message templates (category **Utility**):
+
+```
+New 7H vinyl order {{1}}
+Artist: {{2}}
+Spec: {{3}}
+Turnkey total: {{4}}
+Deposit due: {{5}}
+Open the operations console to confirm the deposit and release the plant order.
+```
+
+The console shows the same sample under `/api/admin/overview → automation.whatsappTemplate`, so the
+wording you submit always matches what the app sends. `WHATSAPP_TEMPLATE_LANG` defaults to `en_US` —
+change it if you submit a different language.
+
 ### Notifications
 
 Orders trigger alerts the moment they are created. Every channel is **optional and independent** —

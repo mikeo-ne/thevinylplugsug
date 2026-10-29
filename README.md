@@ -65,10 +65,14 @@ npx vercel link && npx vercel --prod
 ### 1. Landing experience (`/`)
 - Hero: **“Press Your Sound on Vinyl. Zero Risk, Global Delivery.”** with a live quote card bound
   to the current configuration and an animated SVG record that changes size/shape for 7" singles.
-- **Sample pressings** (`/#samples`): every format and jacket style rendered as a product shot — a
-  black, a colour/splatter and a 7" record, plus standard jacket, gatefold and printed inner — drawn
-  from the live catalogue (`src/components/vinyl/VinylMockup.tsx`) so proportion, compound colour and
-  label size match what the plant presses. Tapping a sample loads it into the quote.
+- **Sample pressings** (`/#samples`): a shelf of six sleeves in the classic East African pressing idiom,
+  plus every format and jacket style as a product shot — black, colour/splatter and 7" records,
+  standard jacket, gatefold and printed inner — drawn from the live catalogue
+  (`src/components/vinyl/VinylMockup.tsx`) so proportion, compound colour and label size match what
+  the plant presses. Tapping a sample loads it into the quote.
+- **Sleeve artwork** lives in `src/components/vinyl/sleeveArt.tsx`: original designs drawn in-house
+  (sunburst labels, cloth-print geometry, ochre/oxide palettes), so no third-party sleeve art is
+  reproduced. Replace or add designs there — one object per sleeve.
 - Ticker, four-step process, pressing-partner cards, audience grid, FAQ accordion, closing CTA.
 
 ### 2. Quote configurator (`/#configurator`)
@@ -169,6 +173,19 @@ be overridden with `CONTACT_EMAIL` / `CONTACT_PHONE` / `CONTACT_WHATSAPP` — se
 the three objections you will hear, and the pre-pitch checklist (rotate the passcode, light up an
 alert channel, reset demo data). The 1200×630 share card at `public/og-image.png` is what renders in
 the link preview.
+
+## Automation
+
+The order pipeline runs end to end without anyone creating a factory order by hand:
+
+1. **Submit** → email to the desk, WhatsApp to management, Slack if wired.
+2. **Deposit confirmed** in `/admin` → the production request is emailed to the pressing plant
+   (addresses, spec sheet, absolute download links for masters and artwork) and BCC'd to the desk.
+3. **Failure** → the console marks the hand-off `failed` with the provider's error and offers retry.
+
+`PLANT_AUTO_FORWARD=false` restores manual release; `PLANT_FORWARD_ON_ORDER=true` releases on
+submission instead of on deposit. Setup, the WhatsApp template wording and every variable:
+[DEPLOYMENT.md → Automation](./DEPLOYMENT.md#automation--order--alerts--plant-no-manual-steps).
 
 ## Notifications
 

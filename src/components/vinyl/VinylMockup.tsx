@@ -1,4 +1,5 @@
 import { useId } from 'react';
+import { SleeveArt, sleeveById } from './sleeveArt';
 
 export type VinylColorway = 'black' | 'splatter' | 'clear';
 
@@ -11,6 +12,8 @@ interface VinylMockupProps {
   spin?: boolean;
   className?: string;
   label?: string;
+  /** Sleeve design id from `sleeveArt.ts` — printed on the jacket and the label. */
+  art?: string;
 }
 
 /**
@@ -28,9 +31,11 @@ export function VinylMockup({
   spin = false,
   className = '',
   label = '7H',
+  art,
 }: VinylMockupProps) {
   const raw = useId().replace(/[^a-zA-Z0-9]/g, '');
   const id = `mk-${raw}`;
+  const design = art ? sleeveById(art) : null;
 
   const isSingle = vinylTypeId === 'seven_single';
   const colorway: VinylColorway =
@@ -92,6 +97,12 @@ export function VinylMockup({
           <clipPath id={`${id}-clip`}>
             <circle cx={recordCx} cy={recordCy} r={recordR - 1} />
           </clipPath>
+          <clipPath id={`${id}-label`}>
+            <circle cx={recordCx} cy={recordCy} r={labelR} />
+          </clipPath>
+          <clipPath id={`${id}-jacket`}>
+            <rect x={jacketX} y={jacketY} width={jacketW} height={jacketH} rx="3.5" />
+          </clipPath>
         </defs>
 
         {/* cast shadow */}
@@ -133,29 +144,54 @@ export function VinylMockup({
             strokeWidth="0.8"
           />
 
-          {/* centre label */}
-          <circle cx={recordCx} cy={recordCy} r={labelR} fill="#CCFF00" />
+          {/* centre label — the sleeve art printed at label size */}
+          {design && (
+          <g clipPath={`url(#${id}-label)`}>
+            <svg
+              x={recordCx - labelR}
+              y={recordCy - labelR}
+              width={labelR * 2}
+              height={labelR * 2}
+              viewBox="0 34 300 300"
+              preserveAspectRatio="xMidYMid slice"
+            >
+              <SleeveArt uid={`${id}-lab`} design={design} compact />
+            </svg>
+          </g>
+          )}
+          {!design && <circle cx={recordCx} cy={recordCy} r={labelR} fill="#CCFF00" />}
+          {!design && (
+            <text
+              x={recordCx}
+              y={recordCy + (isSingle ? 5 : 6)}
+              textAnchor="middle"
+              fontFamily='"Space Grotesk", Inter, sans-serif'
+              fontWeight="700"
+              fontSize={isSingle ? 19 : 20}
+              letterSpacing="-0.6"
+              fill="#121212"
+            >
+              {label}
+            </text>
+          )}
+          <circle
+            cx={recordCx}
+            cy={recordCy}
+            r={labelR}
+            fill="none"
+            stroke="rgba(0,0,0,0.28)"
+            strokeWidth="0.7"
+          />
           <circle
             cx={recordCx}
             cy={recordCy}
             r={labelR - 3}
             fill="none"
-            stroke="rgba(18,18,18,0.22)"
-            strokeWidth="0.6"
+            stroke="rgba(0,0,0,0.14)"
+            strokeWidth="0.5"
           />
-          <text
-            x={recordCx}
-            y={recordCy + (isSingle ? 5 : 6)}
-            textAnchor="middle"
-            fontFamily='"Space Grotesk", Inter, sans-serif'
-            fontWeight="700"
-            fontSize={isSingle ? 19 : 20}
-            letterSpacing="-0.6"
-            fill="#121212"
-          >
-            {label}
-          </text>
-          <circle cx={recordCx} cy={recordCy} r="2.6" fill="#121212" />
+          <circle cx={recordCx} cy={recordCy} r="2.8" fill="#0b0b0a" />
+          <circle cx={recordCx} cy={recordCy} r="1.2" fill="#2a2a27" />
         </g>
 
         {/* gatefold: the opened second panel peeking out behind */}
@@ -223,80 +259,91 @@ export function VinylMockup({
           />
           <rect x={jacketX} y={jacketY} width="7" height={jacketH} fill={`url(#${id}-spine)`} />
 
-          {/* print */}
-          <rect
-            x={jacketX + 12}
-            y={jacketY + 12}
-            width={jacketW - 24}
-            height={jacketH - 24}
-            rx="2"
-            fill="none"
-            stroke="rgba(204,255,0,0.16)"
-          />
-          <circle
-            cx={jacketX + jacketW - 36}
-            cy={jacketY + 46}
-            r={isSingle ? 22 : 30}
-            fill="none"
-            stroke="rgba(204,255,0,0.26)"
-            strokeWidth="1"
-          />
-          <circle cx={jacketX + jacketW - 36} cy={jacketY + 46} r={isSingle ? 14 : 19} fill="rgba(204,255,0,0.1)" />
-
-          <text
-            x={jacketX + 14}
-            y={jacketY + 34}
-            fontFamily="Inter, sans-serif"
-            fontSize={isSingle ? '5' : '6.2'}
-            letterSpacing="2.2"
-            fill="rgba(244,244,239,0.55)"
-          >
-            7H MUSIC GROUP
-          </text>
-          <text
-            x={jacketX + 14}
-            y={jacketY + (isSingle ? 62 : 68)}
-            fontFamily='"Space Grotesk", Inter, sans-serif'
-            fontWeight="700"
-            fontSize={isSingle ? 17 : 21}
-            letterSpacing="-0.5"
-            fill="#F4F4EF"
-          >
-            {isSingle ? '45' : 'LP'}
-          </text>
-          <text
-            x={jacketX + 14}
-            y={jacketY + (isSingle ? 78 : 86)}
-            fontFamily="Inter, sans-serif"
-            fontSize={isSingle ? 8 : 10}
-            letterSpacing="1.3"
-            fill="#CCFF00"
-          >
-            {isSingle ? 'RPM' : isGatefold ? 'GATEFOLD' : hasInner ? 'INNER' : 'SIDE A'}
-          </text>
-
-          {[0, 1, 2].map((row) => (
+          {/* sleeve artwork, printed full-bleed inside the jacket edge */}
+          {design && (
+          <g clipPath={`url(#${id}-jacket)`}>
+            <svg
+              x={jacketX}
+              y={jacketY}
+              width={jacketW}
+              height={jacketH}
+              viewBox="0 0 300 300"
+              preserveAspectRatio="xMidYMid slice"
+            >
+              <SleeveArt uid={`${id}-art`} design={design} />
+            </svg>
+            {/* print sheen across the board */}
             <rect
-              key={row}
-              x={jacketX + 14}
-              y={jacketY + jacketH * 0.58 + row * 7}
-              width={row === 2 ? jacketW * 0.28 : jacketW * 0.5}
-              height="2"
-              rx="1"
-              fill="rgba(244,244,239,0.16)"
+              x={jacketX}
+              y={jacketY}
+              width={jacketW}
+              height={jacketH}
+              fill={`url(#${id}-sheen)`}
+              opacity="0.5"
             />
-          ))}
-
-          <text
-            x={jacketX + 14}
-            y={jacketY + jacketH - 16}
-            fontFamily="Inter, sans-serif"
-            fontSize={isSingle ? '4.8' : '5.6'}
-            letterSpacing="1.6"
-            fill="rgba(244,244,239,0.34)"
-          >
-            {isSingle ? '7-INCH · 2 TRACK' : '12-INCH · 140G'}
-          </text>
+          </g>
+          )}
+          {!design && (
+            <>
+              <rect
+                x={jacketX + 12}
+                y={jacketY + 12}
+                width={jacketW - 24}
+                height={jacketH - 24}
+                rx="2"
+                fill="none"
+                stroke="rgba(204,255,0,0.16)"
+              />
+              <circle
+                cx={jacketX + jacketW - 36}
+                cy={jacketY + 46}
+                r={isSingle ? 22 : 30}
+                fill="none"
+                stroke="rgba(204,255,0,0.26)"
+                strokeWidth="1"
+              />
+              <text
+                x={jacketX + 14}
+                y={jacketY + 34}
+                fontFamily="Inter, sans-serif"
+                fontSize={isSingle ? '5' : '6.2'}
+                letterSpacing="2.2"
+                fill="rgba(244,244,239,0.55)"
+              >
+                7H MUSIC GROUP
+              </text>
+              <text
+                x={jacketX + 14}
+                y={jacketY + (isSingle ? 62 : 68)}
+                fontFamily='"Space Grotesk", Inter, sans-serif'
+                fontWeight="700"
+                fontSize={isSingle ? 17 : 21}
+                letterSpacing="-0.5"
+                fill="#F4F4EF"
+              >
+                {isSingle ? '45' : 'LP'}
+              </text>
+              <text
+                x={jacketX + 14}
+                y={jacketY + (isSingle ? 78 : 86)}
+                fontFamily="Inter, sans-serif"
+                fontSize={isSingle ? 8 : 10}
+                letterSpacing="1.3"
+                fill="#CCFF00"
+              >
+                {isSingle ? 'RPM' : isGatefold ? 'GATEFOLD' : hasInner ? 'INNER' : 'SIDE A'}
+              </text>
+            </>
+          )}
+          <rect
+            x={jacketX + 0.5}
+            y={jacketY + 0.5}
+            width={jacketW - 1}
+            height={jacketH - 1}
+            rx="3.5"
+            fill="none"
+            stroke="rgba(255,255,255,0.14)"
+          />
         </g>
       </svg>
     </div>
