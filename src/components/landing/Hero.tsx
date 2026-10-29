@@ -133,7 +133,7 @@ export function Hero() {
             {/* floating order chip */}
             <div className="absolute -top-1 right-0 hidden items-center gap-2.5 rounded-full border border-white/10 bg-[#161615]/90 px-3.5 py-2 text-[11px] text-bone shadow-panel backdrop-blur-xl sm:flex">
               <Icon name="check-circle" size={14} className="text-lime" />
-              Deposit cleared · auto-sent to the plant
+              Deposit confirmed · then released to the plant
             </div>
 
             <div className="absolute bottom-16 right-0 hidden max-w-[150px] rounded-xl border border-white/[0.08] bg-[#161615]/80 p-3 text-[10px] leading-relaxed text-muted backdrop-blur-md sm:block">
