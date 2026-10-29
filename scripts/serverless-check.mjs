@@ -1,7 +1,7 @@
 /**
  * Verifies the Vercel serverless handler locally.
  *
- * Boots `api/[...path].js` (the exact module Vercel runs) behind Node's http
+ * Boots `api/index.js` (the exact module Vercel runs) behind Node's http
  * server with VERCEL=1 + an isolated /tmp store, then exercises the endpoints —
  * including stateless admin tokens and elapsed-time webhook reconciliation.
  */
@@ -23,7 +23,7 @@ process.env.UPLOAD_DIR = TEST_UPLOADS;
 process.env.ADMIN_PASSCODE = 'CHECKCODE';
 process.env.SESSION_SECRET = 'serverless-check-secret';
 
-const { default: handler } = await import('../api/[...path].js');
+const { default: handler } = await import('../api/index.js');
 
 const server = http.createServer(handler);
 await new Promise((resolve) => server.listen(PORT, '127.0.0.1', resolve));
@@ -115,6 +115,24 @@ try {
 
   const strippedUrl = await json('/health');
   check(strippedUrl.status === 200 && strippedUrl.body.ok, 'handler tolerates a stripped /api prefix');
+
+  // Mirrors the vercel.json rewrite: /api/(.*) -> /api?path=$1
+  const rewritten = await fetch(`${BASE}/api?path=config`);
+  const rewrittenBody = await rewritten.json().catch(() => ({}));
+  check(
+    rewritten.status === 200 && Array.isArray(rewrittenBody.vinylTypes),
+    'rewrite form (/api?path=config) resolves the catalogue',
+  );
+
+  const rewrittenQuery = await fetch(`${BASE}/api?path=orders/${orderId}`);
+  const rewrittenOrder = await rewrittenQuery.json().catch(() => ({}));
+  check(
+    rewrittenQuery.status === 200 && rewrittenOrder.order?.id === orderId,
+    'rewrite form keeps multi-segment paths and returns JSON',
+  );
+
+  const unknown = await json('/api/does-not-exist');
+  check(unknown.status === 404, 'unknown API route returns JSON 404');
 
   check(fs.existsSync(TEST_DATA), 'store writes to the configured /tmp data dir');
   check(fs.existsSync(TEST_UPLOADS), 'uploads dir created under /tmp');

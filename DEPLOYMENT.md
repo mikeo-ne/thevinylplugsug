@@ -4,8 +4,8 @@ The repository is already wired for Vercel: the React app builds to `dist/` (ser
 Vercel's CDN) and the Express API runs as one catch-all serverless function.
 
 ```
-vercel.json                     build + output + SPA rewrite + cache headers
-api/[...path].js                serverless entry — exports the Express app
+vercel.json                     build + output + /api rewrite + SPA rewrite + cache headers
+api/index.js                    serverless entry — exports the Express app
 server/app.js                   shared Express router (API only, no Vite)
 server/index.js                 standalone server (local dev / Node hosting)
 ```
@@ -89,7 +89,7 @@ Everything else — quotes, validation, webhook fan-out, admin actions — is st
 ```bash
 npm run typecheck
 npm run build
-npm run test:serverless   # boots api/[...path].js with VERCEL=1
+npm run test:serverless   # boots api/index.js with VERCEL=1
 node scripts/smoke.mjs    # needs the app running on :4173
 node scripts/flow.mjs
 ```

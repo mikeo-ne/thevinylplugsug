@@ -49,7 +49,7 @@ Copy `.env.example` if you want to override defaults locally.
 
 ## Deploy to Vercel
 
-`vercel.json` + `api/[...path].js` ship ready. Import the repo in Vercel, set `ADMIN_PASSCODE` and
+`vercel.json` + `api/index.js` ship ready. Import the repo in Vercel, set `ADMIN_PASSCODE` and
 `SESSION_SECRET`, and deploy — no build tweaks required. Full walkthrough, environment table,
 platform limits (4 MB uploads, ephemeral `/tmp`) and the upgrade path to Vercel Blob + Postgres live
 in **[DEPLOYMENT.md](./DEPLOYMENT.md)**.
@@ -150,7 +150,7 @@ session, in-memory).
 ## Project layout
 
 ```
-api/[...path].js           # Vercel serverless entry (wraps the Express app)
+api/index.js               # Vercel serverless entry (wraps the Express app)
 vercel.json                # build, SPA rewrite, cache headers, function limits
 shared/pricing.js          # single source of truth for catalogue + maths (client & server)
 server/
@@ -168,7 +168,7 @@ src/
   store/DraftContext.tsx   # configuration + client draft (sessionStorage)
 scripts/smoke.mjs          # renders every route in jsdom, asserts no runtime errors
 scripts/flow.mjs           # drives the full order flow in jsdom and verifies the API/admin
-scripts/serverless-check.mjs # boots api/[...path].js with VERCEL=1 and checks the endpoints
+scripts/serverless-check.mjs # boots api/index.js with VERCEL=1 and checks the endpoints
 .github/workflows/ci.yml   # typecheck → build → serverless checks → smoke → flow
 ```
 

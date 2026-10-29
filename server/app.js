@@ -2,7 +2,7 @@
  * 7H Music Group — Express API router.
  *
  * Shared by the standalone server (`server/index.js`) and the Vercel
- * serverless handler (`api/[...path].js`), so both runtimes expose exactly the
+ * serverless handler (`api/index.js`), so both runtimes expose exactly the
  * same endpoints.
  */
 import express from 'express';
@@ -582,6 +582,12 @@ api.get('/api/admin/orders/:id/payload', requireAdmin, (req, res) => {
 /* ------------------------------------------------------------------ *
  * Errors
  * ------------------------------------------------------------------ */
+
+// Unknown API routes answer with JSON (never the SPA shell), so a mistyped
+// endpoint can't be mistaken for a successful HTML response.
+api.use('/api', (_req, res) => {
+  res.status(404).json({ error: 'API route not found.' });
+});
 
 export function apiErrorHandler(err, _req, res, _next) {
   if (res.headersSent) return;
