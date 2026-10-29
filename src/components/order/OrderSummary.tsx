@@ -50,7 +50,7 @@ export function OrderSummary({ onEdit }: { onEdit?: (step: number) => void }) {
           <span className="text-right text-bone">
             {quote.plant.name}
             <span className="mt-0.5 block text-[11px] text-muted">
-              MOQ {quote.plant.moq} · {quote.plant.leadTime}
+              MOQ {quote.plant.moq} {quote.plant.moq === 1 ? 'unit' : 'units'} · {quote.plant.leadTime}
             </span>
           </span>
         </div>
