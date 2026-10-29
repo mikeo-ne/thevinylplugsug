@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { DraftConfiguration, DraftFiles, DraftPayment, ClientDetails } from '../types';
 import {
   DEFAULT_CONFIGURATION,
@@ -9,6 +9,7 @@ import {
   quoteFor,
 } from '../lib/pricing';
 import { useConfig } from '../hooks/useConfig';
+import { useRates } from './RatesContext';
 
 const STORAGE_KEY = '7h-draft-v1';
 
@@ -118,9 +119,18 @@ export function DraftProvider({ children }: { children: React.ReactNode }) {
     [],
   );
 
+  const destinationTouched = useRef(false);
+
   const setClient = useCallback(
-    (patch: Partial<ClientDetails>) =>
-      setState((prev) => ({ ...prev, client: { ...prev.client, ...patch } })),
+    (patch: Partial<ClientDetails>) => {
+      // Only an address the visitor actually typed deserves to lock the
+      // currency — the seeded "Uganda" default must not override a visitor's
+      // own location guess.
+      if (patch.deliveryType !== undefined || patch.country !== undefined) {
+        destinationTouched.current = true;
+      }
+      setState((prev) => ({ ...prev, client: { ...prev.client, ...patch } }));
+    },
     [],
   );
 
@@ -155,11 +165,39 @@ export function DraftProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const fxRate = config?.fxRate ?? fallbackFxRate;
+  // The shilling figures on a draft are display maths, but they must never be
+  // weaker than the invoice. Prefer the live (floored) rate, keep the configured
+  // constant as the fallback, and let the server's own quote win at checkout.
+  const { snapshot, currency, setDestination, clearDestination } = useRates();
+  const liveUgxRate = Number(snapshot.rates?.UGX);
+  const fxRate =
+    Number.isFinite(liveUgxRate) && liveUgxRate > 0
+      ? Math.max(liveUgxRate, fallbackFxRate)
+      : config?.fxRate ?? fallbackFxRate;
   const quote = useMemo(
     () => quoteFor(state.configuration, fxRate, state.plantPreference),
     [state.configuration, fxRate, state.plantPreference],
   );
+
+  /**
+   * Follow the delivery zone: a Kampala/Uganda drop is quoted in shillings, a
+   * regional one stays on USD until an address says otherwise. The visitor can
+   * still override it with the switcher, which unlocks the auto-follow.
+   */
+  useEffect(() => {
+    if (!destinationTouched.current) return;
+    if (state.client.deliveryType === 'uganda') {
+      setDestination({ country: 'UG', label: 'Uganda delivery' });
+    } else {
+      setDestination({
+        country: state.client.country || 'INTL',
+        label: state.client.country ? `delivery to ${state.client.country}` : 'international delivery',
+      });
+    }
+    // Only re-run when the destination itself changes, not on every keystroke.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.client.deliveryType, state.client.country]);
+
 
   const value = useMemo<DraftContextValue>(
     () => ({

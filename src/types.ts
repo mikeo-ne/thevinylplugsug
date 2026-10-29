@@ -115,6 +115,12 @@ export interface CompanyConfig {
     hours: string;
   };
   fxRate: number;
+  /** USD is the base; `display` lists what the switcher may offer. */
+  currency?: {
+    base: string;
+    display: { code: CurrencyCode; name: string; short: string; locale: string; minorUnits: number }[];
+    safetyUgxRate: number;
+  };
   managementFeeRate: number;
   depositRate: number;
   quantities: number[];
@@ -483,4 +489,30 @@ export interface AlertTestResult {
   missing?: string[];
   latencyMs?: number;
   attemptedAt: string;
+}
+
+/* ------------------------------- currency ------------------------------- */
+
+export type CurrencyCode = 'UGX' | 'USD' | 'EUR' | 'GBP';
+
+/**
+ * The live-rate snapshot from `/api/rates`.
+ *
+ * `source` is deliberately explicit: `live` (a fresh provider quote), `partial`
+ * (one provider answered), `stale` (a recent quote kept because the provider is
+ * down) or `safety` (the configured floor only). The UI says which.
+ */
+export interface RatesSnapshot {
+  base: string;
+  rates: Partial<Record<CurrencyCode, number>>;
+  source: 'live' | 'partial' | 'stale' | 'safety' | string;
+  live: boolean;
+  fetchedAt: string;
+  expiresAt: string | null;
+  provider?: string;
+  reason?: string;
+  floor?: number;
+  currencies: CurrencyCode[];
+  cached?: boolean;
+  errors?: string[];
 }

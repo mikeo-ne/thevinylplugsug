@@ -1,10 +1,14 @@
 import { useDraft } from '../../store/DraftContext';
-import { usd, ugx } from '../../lib/format';
+import { usd } from '../../lib/format';
+import { useRates } from '../../store/RatesContext';
 import { Icon } from '../ui/Icon';
 import { useConfig } from '../../hooks/useConfig';
 
 export function OrderSummary({ onEdit }: { onEdit?: (step: number) => void }) {
   const { quote, client, files } = useDraft();
+  const { note, rateLine } = useRates();
+  const totalNote = note(quote.total, { ugx: quote.totals.total.ugx });
+  const depositNote = note(quote.deposit, { ugx: quote.totals.deposit.ugx });
 
   const hasFiles = files.audio.length + files.artwork.length > 0;
 
@@ -93,7 +97,7 @@ export function OrderSummary({ onEdit }: { onEdit?: (step: number) => void }) {
             <div className="num mt-1 text-[22px] font-semibold leading-none text-bone">
               {usd(quote.total, { cents: true })}
             </div>
-            <div className="mt-1 text-[10.5px] text-muted">{ugx(quote.totals.total.ugx)}</div>
+            {totalNote && <div className="mt-1 text-[10.5px] text-muted">{totalNote}</div>}
           </div>
         </div>
 
@@ -107,7 +111,7 @@ export function OrderSummary({ onEdit }: { onEdit?: (step: number) => void }) {
           <div className="num mt-1.5 text-[18px] font-semibold leading-none text-bone">
             {usd(quote.deposit, { cents: true })}
           </div>
-          <div className="mt-1 text-[10.5px] text-muted">{ugx(quote.totals.deposit.ugx)}</div>
+          {depositNote && <div className="mt-1 text-[10.5px] text-muted">{depositNote}</div>}
         </div>
       </div>
 

@@ -35,7 +35,12 @@ Once `main` is up to date, any Vercel project connected to this repository deplo
 | ---------------- | -------- | ------------------------------------ | -------------------------------------------------- |
 | `ADMIN_PASSCODE` | **yes**  | `vinyl-ops-2027`                     | Change from the `7HADMIN` demo default             |
 | `SESSION_SECRET` | **yes**  | `openssl rand -hex 32`               | Signs admin session tokens (stateless, 8-hour TTL) |
-| `FX_UGX_PER_USD` | no       | `4360`                               | Indicative rate used across quotes                 |
+| `FX_UGX_PER_USD` | no       | `4360`                               | Safety rate and UGX floor (never quote below it) |
+| `FX_API_URL`     | no       | `https://api.frankfurter.dev/v1/latest?base=USD&symbols=EUR,GBP` | Live EUR/GBP |
+| `FX_UGX_API_URL` | no       | `https://open.er-api.com/v6/latest/USD` | Live UGX (Frankfurter has no shilling) |
+| `FX_CACHE_SECONDS` | no     | `3600`                               | How long a fetched rate is reused                  |
+| `FX_STALE_SECONDS` | no     | `21600`                              | How long a stale rate may still be quoted in an outage |
+| `FX_UGX_FLOOR`   | no       | `4360`                               | Never quote UGX below this, whatever the market does |
 | `MAX_UPLOAD_MB`  | no       | `4`                                  | Defaults to 4 on Vercel, 80 elsewhere              |
 | `CONTACT_EMAIL`  | no       | `7hmusicgroupug@gmail.com`           | Shown in the footer, alerts and email replies      |
 | `CONTACT_PHONE`  | no       | `+256 768 261 003`                   | Displayed phone number                             |
@@ -64,7 +69,23 @@ openssl rand -hex 32
 
 Redeploy after changing env vars — Vercel does not restart functions automatically.
 
-**Keep `FX_UGX_PER_USD` current.** It is the rate every local price is multiplied by — the quote, the
+### Live currency
+
+Rates are fetched on load, on demand at `/api/rates` and cached (in the function for
+`FX_CACHE_SECONDS`, and in the browser's session for an hour) — so the shop stays fast and the
+provider sees a handful of calls an hour. **USD is the base**: quotes, the 25% fee, the deposit and
+every stored order stay in dollars; a display currency is only ever a multiplication. UGX is locked
+for Uganda delivery, EUR for Europe, GBP for the UK and USD everywhere else, and the visitor can
+override any of it with the switcher.
+
+If the feed fails there are three fallbacks, in order: the last good quote (up to
+`FX_STALE_SECONDS`), then the safety table (UGX at the floor, no EUR/GBP), then USD only. A
+checkout never waits on the provider — after 900 ms it takes the floor and carries on. The rate is
+also **floored, never capped**: a stronger shilling cannot push UGX below `FX_UGX_FLOOR`, and a
+weaker one passes straight through, so a shilling invoice always covers its dollar total. The footer
+of a quote says which source it used, so nobody is guessing.
+
+**Keep `FX_UGX_PER_USD` current.** It is now the safety rate and the floor It is the rate every local price is multiplied by — the quote, the
 25% fee, the 50% deposit, the shop's UGX labels and the console totals. Set it at or just above the
 mid-market rate (Wise shows USD/UGX live) and re-check it monthly, or whenever the shilling moves;
 a stale rate is how a dollar quote quietly becomes a loss on a UGX invoice. It is currently
@@ -114,7 +135,7 @@ the console keeps them apart.
 | Variable | Default | Notes |
 | --- | --- | --- |
 | `SHOP_ORDERS_PER_MINUTE` | `12` | Per-IP ceiling on shop checkouts. Raise it for a launch, or for a load test |
-| `FX_UGX_PER_USD` | `4360` | Also prices the shop in UGX, so one rate keeps both doors consistent |
+| `FX_UGX_PER_USD` | `4360` | Safety rate and UGX floor; also the offline price for the shop |
 
 - Retail prices and delivery fees live in `shared/shop.js` — one file, read by the page, the API and
   the console. Edit it, deploy, done. Stock is *not* in the code: it starts at the opening count and

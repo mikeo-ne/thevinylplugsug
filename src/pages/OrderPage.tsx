@@ -4,7 +4,8 @@ import { useDraft } from '../store/DraftContext';
 import { useConfig } from '../hooks/useConfig';
 import { useToast } from '../components/ui/Toast';
 import { api, ApiError } from '../lib/api';
-import { usd, ugx, bytes } from '../lib/format';
+import { usd, bytes } from '../lib/format';
+import { useRates } from '../store/RatesContext';
 import { CONTACT, whatsappUrl } from '../lib/contact';
 import { Icon } from '../components/ui/Icon';
 import { Stepper } from '../components/order/Stepper';
@@ -43,6 +44,8 @@ export function OrderPage() {
     quote,
     reset,
   } = useDraft();
+  const { note } = useRates();
+  const totalNote = note(quote.total, { ugx: quote.totals.total.ugx });
 
   const [step, setStep] = useState(1);
   const [maxStep, setMaxStep] = useState(1);
@@ -658,8 +661,8 @@ export function OrderPage() {
                         <p className="mt-1 text-[11.5px] leading-relaxed text-muted">
                           Nothing reaches a supplier until management confirms your 50% deposit — then the
                           plant receives the spec sheet and you get the proof. Your quoted total is{' '}
-                          <span className="text-lime">{usd(quote.total, { cents: true })}</span> (
-                          {ugx(quote.totals.total.ugx)}).
+                          <span className="text-lime">{usd(quote.total, { cents: true })}</span>
+                          {totalNote ? ` (${totalNote.replace('≈ ', '')})` : ''}.
                         </p>
                       </div>
                     </div>

@@ -3,6 +3,7 @@ import type {
   AdminShop,
   AdminShopOrder,
   AlertTestResult,
+  RatesSnapshot,
   CompanyConfig,
   Order,
   ShopConfig,
@@ -139,6 +140,9 @@ export const api = {
     request<{ order: ShopOrder }>(`/api/shop/orders/${encodeURIComponent(id)}`),
 
   adminShop: () => request<AdminShop>('/api/admin/shop'),
+
+  /** Live FX. Cheap: the server caches it for an hour. */
+  rates: () => request<RatesSnapshot>('/api/rates'),
 
   adminSystem: () => request<SystemHealth>('/api/admin/system'),
 

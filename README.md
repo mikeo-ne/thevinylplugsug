@@ -40,7 +40,10 @@ Copy `.env.example` if you want to override defaults locally.
 | Variable          | Default     | Purpose                                        |
 | ----------------- | ----------- | ---------------------------------------------- |
 | `PORT`            | `4173`      | HTTP port (standalone server)                  |
-| `FX_UGX_PER_USD`  | `4360`      | Indicative FX rate used on every quote         |
+| `FX_UGX_PER_USD`  | `4360`      | Safety rate — the never-underquote floor for UGX |
+| `FX_API_URL` / `FX_UGX_API_URL` | public endpoints | Where live EUR/GBP and UGX rates come from |
+| `FX_CACHE_SECONDS` / `FX_STALE_SECONDS` | `3600` / `21600` | How long a quote is fresh, and how long it may be reused in an outage |
+| `FX_UGX_FLOOR`    | `FX_UGX_PER_USD` | Hard floor applied to the live shilling rate |
 | `ADMIN_PASSCODE`  | built-in demo code | Access code for the operations console — set your own before sharing the link |
 | `SESSION_SECRET`  | derived     | Signs stateless admin tokens — set in production |
 | `MAX_UPLOAD_MB`   | `80` (`4` on Vercel) | Per-file upload cap advertised to the client |
