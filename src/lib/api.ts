@@ -9,6 +9,7 @@ import type {
   ShopConfig,
   ShopOrder,
   SystemHealth,
+  TelegramChats,
   UploadedFile,
   WebhookEvent,
 } from '../types';
@@ -145,6 +146,9 @@ export const api = {
   rates: () => request<RatesSnapshot>('/api/rates'),
 
   adminSystem: () => request<SystemHealth>('/api/admin/system'),
+
+  /** Ask the bot who has messaged it — that is where the chat id comes from. */
+  adminTelegramChats: () => request<TelegramChats>('/api/admin/telegram/chats'),
 
   adminTestAlerts: (channels?: string[]) =>
     request<{ results: AlertTestResult[] }>('/api/admin/alerts/test', {

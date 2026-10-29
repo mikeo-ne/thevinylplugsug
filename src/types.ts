@@ -493,6 +493,14 @@ export interface AlertChannelEnv {
   missing: string[];
 }
 
+export interface TelegramChats {
+  status: 'ok' | 'unconfigured' | 'error';
+  bot?: string | null;
+  chats: { id: string; type: string; title: string | null; username: string | null }[];
+  hint?: string | null;
+  error?: string;
+}
+
 export interface AlertFailure {
   id: string;
   channel: string;
