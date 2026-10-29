@@ -42,6 +42,8 @@ import {
   updateShopOrder,
 } from './shop.js';
 import { alertEnvCheck, notificationConfig, sendTestAlerts } from './notifications.js';
+import { currentUgxRate, getRates } from './rates.js';
+import { BASE_CURRENCY, DISPLAY_CURRENCIES } from '../shared/currency.js';
 import { db_, ensureDirs, newOrderId, newId, refreshStore, storeReady, UPLOAD_DIR } from './store.js';
 import {
   alertOutboxSummary,
@@ -242,6 +244,13 @@ api.get('/api/config', (_req, res) => {
   res.json({
     company: COMPANY,
     fxRate: FX_UGX_PER_USD,
+    currency: {
+      // USD is the base every factory cost, fee and deposit is computed in.
+      base: BASE_CURRENCY,
+      display: DISPLAY_CURRENCIES,
+      // The rate we fall back to when no live quote is available.
+      safetyUgxRate: FX_UGX_PER_USD,
+    },
     managementFeeRate: MANAGEMENT_FEE_RATE,
     depositRate: DEPOSIT_RATE,
     quantities: QUANTITIES,
@@ -260,14 +269,26 @@ api.get('/api/config', (_req, res) => {
   });
 });
 
-api.post('/api/quote', (req, res) => {
+/**
+ * Live FX.
+ *
+ * The browser calls this on load and keeps the answer for the session; the
+ * server caches it for an hour. `source` tells the UI whether the numbers are
+ * live, a recent copy, or the safety rate — it is never silent about which.
+ */
+api.get('/api/rates', async (_req, res) => {
+  const snapshot = await getRates();
+  res.json(snapshot);
+});
+
+api.post('/api/quote', async (req, res) => {
   const { quantity, vinylTypeId, sleeveId, plantId } = req.body ?? {};
   const quote = calculateQuote({
     quantity,
     vinylTypeId,
     sleeveId,
     plantId,
-    fxRate: FX_UGX_PER_USD,
+    fxRate: await currentUgxRate(),
   });
   if (!quote.valid) return res.status(400).json({ error: quote.errors[0], errors: quote.errors });
   return res.json({ quote });
@@ -321,7 +342,7 @@ api.post('/api/orders', async (req, res) => {
     vinylTypeId: configuration.vinylTypeId,
     sleeveId: configuration.sleeveId,
     plantId: requestedPlant,
-    fxRate: FX_UGX_PER_USD,
+    fxRate: await currentUgxRate(),
   });
   if (!quote.valid) return res.status(400).json({ error: quote.errors[0] });
 
@@ -530,8 +551,8 @@ function shopRateLimited(ip) {
   return hits.length > SHOP_ORDERS_PER_MINUTE;
 }
 
-api.get('/api/shop', (_req, res) => {
-  res.json(shopConfig());
+api.get('/api/shop', async (_req, res) => {
+  res.json(shopConfig(await currentUgxRate()));
 });
 
 api.post('/api/shop/orders', async (req, res) => {
@@ -540,10 +561,10 @@ api.post('/api/shop/orders', async (req, res) => {
     return res.status(429).json({ error: 'That is a lot of orders — give it a minute and try again.' });
   }
 
-  const result = await placeShopOrder({
-    ...(req.body ?? {}),
-    userAgent: req.headers['user-agent'],
-  });
+  const result = await placeShopOrder(
+    { ...(req.body ?? {}), userAgent: req.headers['user-agent'] },
+    await currentUgxRate(),
+  );
   return res.status(result.status).json(result.body);
 });
 

@@ -348,14 +348,23 @@ export function calculateQuote({
     balance,
     depositRate: DEPOSIT_RATE,
     currency: 'USD',
-    totals: {
-      factoryCost: { usd: factoryCost, ugx: Math.round(factoryCost * rate) },
-      managementFee: { usd: managementFee, ugx: Math.round(managementFee * rate) },
-      total: { usd: total, ugx: Math.round(total * rate) },
-      deposit: { usd: deposit, ugx: Math.round(deposit * rate) },
-      balance: { usd: balance, ugx: Math.round(balance * rate) },
-      perUnit: { usd: roundMoney(total / qty), ugx: Math.round((total / qty) * rate) },
-    },
+    // Shilling lines are derived from the USD total, not rounded independently:
+    // the fee is the difference between the two, so the itemised bill adds up to
+    // the shilling total to the last shilling (rounding three lines separately is
+    // how an invoice ends up a few shillings short).
+    totals: (() => {
+      const totalUgx = Math.round(total * rate);
+      const factoryUgx = Math.round(factoryCost * rate);
+      const depositUgx = Math.round(deposit * rate);
+      return {
+        factoryCost: { usd: factoryCost, ugx: factoryUgx },
+        managementFee: { usd: managementFee, ugx: totalUgx - factoryUgx },
+        total: { usd: total, ugx: totalUgx },
+        deposit: { usd: deposit, ugx: depositUgx },
+        balance: { usd: balance, ugx: totalUgx - depositUgx },
+        perUnit: { usd: roundMoney(total / qty), ugx: Math.round((total / qty) * rate) },
+      };
+    })(),
   };
 }
 

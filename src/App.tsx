@@ -3,6 +3,7 @@ import { BrowserRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { DraftProvider } from './store/DraftContext';
 import { BagProvider } from './store/BagContext';
 import { ToastProvider } from './components/ui/Toast';
+import { RatesProvider } from './store/RatesContext';
 import { ErrorBoundary } from './components/ui/ErrorBoundary';
 import { Nav } from './components/layout/Nav';
 import { Footer } from './components/layout/Footer';
@@ -65,13 +66,15 @@ export default function App() {
   return (
     <BrowserRouter>
       <ToastProvider>
-        <DraftProvider>
-          <BagProvider>
-            <ErrorBoundary>
-              <Shell />
-            </ErrorBoundary>
-          </BagProvider>
-        </DraftProvider>
+        <RatesProvider>
+          <DraftProvider>
+            <BagProvider>
+              <ErrorBoundary>
+                <Shell />
+              </ErrorBoundary>
+            </BagProvider>
+          </DraftProvider>
+        </RatesProvider>
       </ToastProvider>
     </BrowserRouter>
   );

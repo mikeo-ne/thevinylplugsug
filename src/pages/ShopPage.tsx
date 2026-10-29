@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { api, ApiError } from '../lib/api';
-import { usd, ugx } from '../lib/format';
+import { usd } from '../lib/format';
+import { useRates } from '../store/RatesContext';
 import { fallbackFxRate } from '../lib/pricing';
 import { whatsappUrl } from '../lib/contact';
 import { useBag } from '../store/BagContext';
@@ -82,6 +83,10 @@ export function ShopPage() {
   const shipping = detailed.length > 0 ? delivery?.priceUsd ?? 0 : 0;
   const total = subtotal + shipping;
   const fxRate = shop?.fxRate ?? fallbackFxRate;
+  const { note, setDestination } = useRates();
+  // Shelf prices and the bag follow the switcher; a Uganda courier locks UGX.
+  const shelfNote = (priceUsd: number) => note(priceUsd);
+  const cartNote = note(total);
 
   const addToBag = (release: ShopRelease) => {
     const limit = Math.min(release.maxPerOrder, release.stock);
@@ -281,7 +286,9 @@ export function ShopPage() {
                         <div className="num text-[19px] font-semibold leading-none text-bone">
                           {usd(release.priceUsd)}
                         </div>
-                        <div className="mt-1 text-[10.5px] text-muted">{ugx(release.priceUsd * fxRate)}</div>
+                        {shelfNote(release.priceUsd) && (
+                          <div className="mt-1 text-[10.5px] text-muted">{shelfNote(release.priceUsd)}</div>
+                        )}
                       </div>
 
                       {release.soldOut ? (
@@ -436,7 +443,15 @@ export function ShopPage() {
                     <button
                       key={option.id}
                       type="button"
-                      onClick={() => setDeliveryId(option.id)}
+                      onClick={() => {
+                        setDeliveryId(option.id);
+                        setDestination({
+                          deliveryId: option.id,
+                          zone: option.zone,
+                          country: option.zone === 'international' ? payer.country : 'UG',
+                          label: option.name,
+                        });
+                      }}
                       className={`flex items-start gap-3 rounded-xl border p-3 text-left transition-colors ${
                         active ? 'border-lime/55 bg-lime/[0.06]' : 'border-white/10 bg-black/20 hover:border-white/25'
                       }`}
@@ -527,7 +542,13 @@ export function ShopPage() {
                         <input
                           className={`input ${errors.country ? 'input-error' : ''}`}
                           value={payer.country}
-                          onChange={(event) => setPayer({ ...payer, country: event.target.value })}
+                          onChange={(event) => {
+                            const country = event.target.value;
+                            setPayer({ ...payer, country });
+                            if (delivery?.zone === 'international' && country.trim().length > 1) {
+                              setDestination({ zone: 'international', country, label: `delivery to ${country}` });
+                            }
+                          }}
                           autoComplete="country-name"
                         />
                       </Field>
@@ -609,7 +630,7 @@ export function ShopPage() {
                   <dt className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">Total</dt>
                   <dd className="num text-[19px] font-semibold text-lime">{usd(total)}</dd>
                 </div>
-                <div className="text-right text-[11px] text-muted">{ugx(total * fxRate)}</div>
+                {cartNote && <div className="text-right text-[11px] text-muted">{cartNote}</div>}
               </dl>
 
               <button

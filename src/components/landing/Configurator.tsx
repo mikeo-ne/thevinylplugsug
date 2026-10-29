@@ -4,7 +4,8 @@ import { useDraft } from '../../store/DraftContext';
 import { useConfig } from '../../hooks/useConfig';
 import { useAnimatedNumber } from '../../hooks/useAnimatedNumber';
 import { Icon } from '../ui/Icon';
-import { usd, ugx } from '../../lib/format';
+import { usd } from '../../lib/format';
+import { useRates } from '../../store/RatesContext';
 import { VinylMockup } from '../vinyl/VinylMockup';
 import { plantsForQuantity, plantSupportsQuantity, quantityTiers, quoteFor } from '../../lib/pricing';
 
@@ -28,6 +29,9 @@ function StepHeader({ index, title, hint }: { index: string; title: string; hint
 
 export function Configurator() {
   const { configuration, setConfiguration, quote, fxRate, plantPreference, setPlantPreference } = useDraft();
+  const { note, rateLine, source } = useRates();
+  const totalNote = note(quote.total, { ugx: quote.totals.total.ugx });
+  const depositNote = note(quote.deposit, { ugx: quote.totals.deposit.ugx });
   const { config } = useConfig();
   const animatedTotal = useAnimatedNumber(quote.total);
   const animatedFee = useAnimatedNumber(quote.managementFee);
@@ -339,9 +343,7 @@ export function Configurator() {
                         {Math.round(animatedTotal).toLocaleString('en-US')}
                       </span>
                     </div>
-                    <div className="mt-2 text-[13px] text-muted">
-                      ≈ {ugx(quote.totals.total.ugx)}
-                    </div>
+                    {totalNote && <div className="mt-2 text-[13px] text-muted">{totalNote}</div>}
                   </div>
                   <div className="hidden w-[132px] shrink-0 sm:block">
                     <VinylMockup
@@ -408,7 +410,7 @@ export function Configurator() {
                       <span className="num block text-[19px] font-semibold text-lime">
                         {usd(quote.total, { cents: true })}
                       </span>
-                      <span className="block text-[11px] text-muted">{ugx(quote.totals.total.ugx)}</span>
+                      {totalNote && <span className="block text-[11px] text-muted">{totalNote}</span>}
                     </dd>
                   </div>
                 </dl>
@@ -422,9 +424,7 @@ export function Configurator() {
                       <div className="num mt-1.5 text-[24px] font-semibold leading-none text-bone">
                         {usd(quote.deposit, { cents: true })}
                       </div>
-                      <div className="mt-1 text-[11px] text-muted">
-                        {ugx(quote.totals.deposit.ugx)} · balance on dispatch
-                      </div>
+                      {depositNote && <div className="mt-1 text-[11px] text-muted">{depositNote} · balance on dispatch</div>}
                     </div>
                     <Icon name="lock" size={18} className="shrink-0 text-lime/70" />
                   </div>
@@ -441,8 +441,8 @@ export function Configurator() {
                 </Link>
 
                 <p className="mt-3.5 text-center text-[10.5px] leading-relaxed text-muted">
-                  Includes freight to Kampala &amp; customs brokerage. FX indicative at{' '}
-                  {fxRate.toLocaleString('en-US')} UGX/USD, locked at invoice.
+                  Includes freight to Kampala &amp; customs brokerage. {rateLine}. Priced in USD;{' '}
+                  {source === 'safety' ? 'safety rate in force' : 'converted at checkout'}, locked at invoice.
                 </p>
               </div>
             </div>

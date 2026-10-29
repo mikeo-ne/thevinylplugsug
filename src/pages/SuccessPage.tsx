@@ -3,7 +3,8 @@ import { Link, useParams } from 'react-router-dom';
 import { api, ApiError } from '../lib/api';
 import { useConfig } from '../hooks/useConfig';
 import { useToast } from '../components/ui/Toast';
-import { dateTime, relativeTime, usd, ugx, statusLabel } from '../lib/format';
+import { dateTime, relativeTime, usd, statusLabel } from '../lib/format';
+import { useRates } from '../store/RatesContext';
 import { whatsappUrl } from '../lib/contact';
 import type { Order, WebhookEvent } from '../types';
 import { Icon, type IconName } from '../components/ui/Icon';
@@ -75,6 +76,7 @@ export function SuccessPage() {
     };
   }, [orderId]);
 
+  const { display } = useRates();
   const method = order ? config.paymentMethods.find((item) => item.id === order.payment.method) : null;
 
   const copyOrderId = async () => {
@@ -118,6 +120,12 @@ export function SuccessPage() {
   }
 
   const quote = order.quote;
+  // Mobile money settles in shillings; a card or bank transfer reads in whatever
+  // currency the fan has the page in.
+  const depositPayable =
+    method?.id === 'card_bank'
+      ? display(quote.deposit, { ugx: quote.totals.deposit.ugx })
+      : `UGX ${quote.totals.deposit.ugx.toLocaleString('en-US')}`;
 
   return (
     <main className="relative min-h-screen pb-24 pt-28 sm:pt-32">
@@ -178,7 +186,7 @@ export function SuccessPage() {
                   <span className="num text-[30px] font-semibold leading-none text-bone">
                     {usd(quote.deposit, { cents: true })}
                   </span>
-                  <span className="text-[12px] text-muted">{ugx(quote.totals.deposit.ugx)}</span>
+                  <span className="text-[12px] text-muted">{depositPayable}</span>
                 </div>
               </div>
 

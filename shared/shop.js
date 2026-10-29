@@ -229,8 +229,10 @@ export function calculateShopOrder({ items = [], deliveryId, fxRate = DEFAULT_FX
     fxRate,
     delivery,
     totals: {
+      // Same rule as the pressing quote: the total is converted once and the
+      // shipping line is the remainder, so subtotal + shipping === total.
       subtotal: { usd: subtotal, ugx: Math.round(subtotal * fxRate) },
-      shipping: { usd: shipping, ugx: Math.round(shipping * fxRate) },
+      shipping: { usd: shipping, ugx: Math.round(total * fxRate) - Math.round(subtotal * fxRate) },
       total: { usd: total, ugx: Math.round(total * fxRate) },
     },
   };

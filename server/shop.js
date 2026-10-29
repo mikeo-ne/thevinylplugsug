@@ -69,12 +69,12 @@ export function shopCatalogueWithStock() {
 }
 
 /** Everything the shop page needs in one request. */
-export function shopConfig() {
+export function shopConfig(fxRate = FX_UGX_PER_USD) {
   return {
     releases: shopCatalogueWithStock(),
     delivery: DELIVERY_OPTIONS,
     paymentMethods: PAYMENT_METHODS.filter((method) => SHOP_PAYMENT_METHODS.includes(method.id)),
-    fxRate: FX_UGX_PER_USD,
+    fxRate,
     limits: { maxPerRelease: MAX_PER_RELEASE },
     company: COMPANY,
   };
@@ -126,7 +126,7 @@ const fail = (status, error, extra = {}) => ({ status, body: { error, ...extra }
  * line against live stock, decrements, stores, then fires the desk alerts and the
  * buyer's receipt. Stock is only touched once the order is known to be valid.
  */
-export async function placeShopOrder(body = {}) {
+export async function placeShopOrder(body = {}, fxRate = FX_UGX_PER_USD) {
   const buyer = body.buyer ?? {};
   const delivery = body.delivery ?? {};
   const payment = body.payment ?? {};
@@ -147,7 +147,7 @@ export async function placeShopOrder(body = {}) {
   const quote = calculateShopOrder({
     items: body.items,
     deliveryId: delivery.id,
-    fxRate: FX_UGX_PER_USD,
+    fxRate,
   });
 
   if (!quote.delivery) errors.delivery = 'Choose how you want the record delivered.';

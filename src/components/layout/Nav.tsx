@@ -4,6 +4,7 @@ import { Logo } from '../ui/Logo';
 import { Icon } from '../ui/Icon';
 import { whatsappUrl } from '../../lib/contact';
 import { useBag } from '../../store/BagContext';
+import { CurrencySwitch } from './CurrencySwitch';
 
 const links = [
   { label: 'Shop', to: '/shop' },
@@ -83,6 +84,9 @@ export function Nav() {
         </nav>
 
         <div className="flex items-center gap-2.5">
+          <div className="hidden sm:block">
+            <CurrencySwitch />
+          </div>
           <a
             href={whatsappUrl()}
             target="_blank"
@@ -129,6 +133,10 @@ export function Nav() {
         }`}
       >
         <nav className="container-x flex flex-col py-3" aria-label="Mobile">
+          <div className="flex items-center justify-between border-b border-white/[0.05] py-3 sm:hidden">
+            <span className="text-[11px] uppercase tracking-[0.14em] text-muted">Currency</span>
+            <CurrencySwitch compact />
+          </div>
           {[...links, { label: 'Admin console', to: '/admin' }].map((link) => (
             <a
               key={link.label}

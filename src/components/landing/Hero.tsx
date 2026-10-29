@@ -2,7 +2,8 @@ import { Link } from 'react-router-dom';
 import { Icon } from '../ui/Icon';
 import { VinylDisc } from '../ui/VinylDisc';
 import { useDraft } from '../../store/DraftContext';
-import { usd, ugx } from '../../lib/format';
+import { usd } from '../../lib/format';
+import { useRates } from '../../store/RatesContext';
 import { whatsappUrl } from '../../lib/contact';
 import { useAnimatedNumber } from '../../hooks/useAnimatedNumber';
 
@@ -15,7 +16,9 @@ const stats = [
 
 export function Hero() {
   const { quote, configuration } = useDraft();
+  const { note } = useRates();
   const animatedTotal = useAnimatedNumber(quote.total);
+  const converted = note(quote.totals.total.usd ?? quote.total, { ugx: quote.totals.total.ugx, prefix: '' });
   const isSingle = configuration.vinylTypeId === 'seven_single';
 
   return (
@@ -123,7 +126,7 @@ export function Hero() {
               <div className="num mt-2 text-[21px] font-semibold leading-none text-bone sm:text-[26px]">
                 {usd(animatedTotal)}
               </div>
-              <div className="mt-1 text-[10px] text-muted sm:text-[11px]">{ugx(quote.totals.total.ugx)}</div>
+              {converted && <div className="mt-1 text-[10px] text-muted sm:text-[11px]">{converted}</div>}
               <div className="mt-3 flex items-center justify-between border-t border-white/[0.08] pt-2.5 text-[10px] text-muted">
                 <span>{quote.quantity} units</span>
                 <span>{usd(quote.perUnit, { cents: true })}/ea</span>

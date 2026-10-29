@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api, ApiError } from '../lib/api';
-import { usd, ugx, dateTime } from '../lib/format';
+import { usd, dateTime } from '../lib/format';
+import { useRates } from '../store/RatesContext';
 import { whatsappUrl } from '../lib/contact';
 import { Icon } from '../components/ui/Icon';
 import { useToast } from '../components/ui/Toast';
@@ -23,6 +24,7 @@ const FLOW: { id: ShopOrder['status']; label: string; blurb: string }[] = [
 export function ShopOrderPage() {
   const { orderId = '' } = useParams();
   const { notify } = useToast();
+  const { note, display } = useRates();
   const [order, setOrder] = useState<ShopOrder | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -83,6 +85,11 @@ export function ShopOrderPage() {
   }
 
   const paid = order.payment.status === 'paid';
+  const totalNote = note(order.total, { ugx: order.totals.total.ugx });
+  // Mobile money moves shillings, so the amount to send stays in UGX; a card or
+  // bank transfer is settled in whatever the fan is reading the page in.
+  const payable =
+    order.payment.method === 'card_bank' ? display(order.total, { ugx: order.totals.total.ugx }) : `UGX ${order.totals.total.ugx.toLocaleString('en-US')}`;
   const cancelled = order.status === 'cancelled';
   const stageIndex = FLOW.findIndex((stage) => stage.id === order.status);
   const historyFor = (status: string) => order.statusHistory.find((entry) => entry.status === status);
@@ -167,7 +174,7 @@ export function ShopOrderPage() {
                   <dt className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">Total</dt>
                   <dd className="text-right">
                     <span className="num block text-[18px] font-semibold text-lime">{usd(order.total)}</span>
-                    <span className="text-[10.5px] text-muted">{ugx(order.totals.total.ugx)}</span>
+                    {totalNote && <span className="text-[10.5px] text-muted">{totalNote}</span>}
                   </dd>
                 </div>
               </dl>
@@ -219,7 +226,7 @@ export function ShopOrderPage() {
                   </span>
                 </div>
                 <div className="mt-3">
-                  <div className="num text-[24px] font-semibold leading-none text-bone">{ugx(order.totals.total.ugx)}</div>
+                  <div className="num text-[24px] font-semibold leading-none text-bone">{payable}</div>
                   <div className="mt-1 text-[11.5px] text-muted">{usd(order.total)} at today's rate</div>
                 </div>
 
@@ -254,7 +261,7 @@ export function ShopOrderPage() {
                 </p>
                 <a
                   href={whatsappUrl(
-                    `Hi 7H — paying ${ugx(order.totals.total.ugx)} for order ${order.id} (${order.payment.reference ?? order.id}).`,
+                    `Hi 7H — paying ${payable} for order ${order.id} (${order.payment.reference ?? order.id}).`,
                   )}
                   target="_blank"
                   rel="noreferrer"
