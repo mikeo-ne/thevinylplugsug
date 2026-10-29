@@ -83,6 +83,8 @@ export interface CompanyConfig {
     email: string;
     phone: string;
     whatsapp: string;
+    /** Digits only (e.g. `256768261003`), for building wa.me links. */
+    whatsappNumber?: string;
     location: string;
     hours: string;
   };

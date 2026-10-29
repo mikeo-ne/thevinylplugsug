@@ -5,6 +5,7 @@ import { useConfig } from '../hooks/useConfig';
 import { useToast } from '../components/ui/Toast';
 import { api, ApiError } from '../lib/api';
 import { usd, ugx, bytes } from '../lib/format';
+import { CONTACT, whatsappUrl } from '../lib/contact';
 import { Icon } from '../components/ui/Icon';
 import { Stepper } from '../components/order/Stepper';
 import { FileDropzone } from '../components/order/FileDropzone';
@@ -717,9 +718,9 @@ export function OrderPage() {
                 <Icon name="shield" size={12} className="text-lime/70" />
                 Files never shared outside the plant
               </span>
-              <a href="https://wa.me/256700411700" className="flex items-center gap-1.5 transition-colors hover:text-lime">
+              <a href={whatsappUrl()} className="flex items-center gap-1.5 transition-colors hover:text-lime">
                 <Icon name="whatsapp" size={12} filled />
-                Need help? +256 700 411 700
+                Need help? {CONTACT.phone}
               </a>
             </div>
           </div>

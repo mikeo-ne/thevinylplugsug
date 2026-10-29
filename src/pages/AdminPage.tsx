@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, ApiError, clearAdminToken, getAdminToken, setAdminToken } from '../lib/api';
 import { useToast } from '../components/ui/Toast';
 import { usd, ugx, dateTime, relativeTime, bytes, statusLabel } from '../lib/format';
+import { CONTACT, whatsappUrl, mailtoUrl } from '../lib/contact';
 import type { AdminOverview, Order, WebhookEvent } from '../types';
 import { Icon, type IconName } from '../components/ui/Icon';
 import { StatusPill } from '../components/ui/StatusPill';
@@ -12,6 +13,22 @@ const channelIcon: Record<string, IconName> = {
   email: 'mail',
   whatsapp: 'whatsapp',
   plant: 'factory',
+};
+
+/** One-tap alert for management: prefilled WhatsApp text with the whole order. */
+const orderBrief = (order: Order) => {
+  const fileNames = [...(order.files?.audio ?? []), ...(order.files?.artwork ?? [])]
+    .map((file) => file.originalName)
+    .join(', ');
+  return [
+    `NEW ORDER · ${order.id}`,
+    `${order.client.name} — ${order.client.email} — ${order.client.phone}`,
+    `${order.configuration.quantity} × ${order.quote.vinylType.name} · ${order.quote.sleeve.name}`,
+    `Turnkey ${usd(order.quote.total, { cents: true })} (${ugx(order.quote.totals.total.ugx)}) · deposit ${usd(order.quote.deposit, { cents: true })}`,
+    `Deliver to ${order.client.deliveryAddress}, ${order.client.deliveryCity}, ${order.client.country}`,
+    fileNames ? `Files: ${fileNames}` : 'Files: pending',
+    `${window.location.origin}/order/${order.id}`,
+  ].join('\n');
 };
 
 const filters = [
@@ -134,6 +151,15 @@ export function AdminPage() {
       setSelectedId(null);
       await loadOverview();
     });
+
+  const sendToWhatsApp = (order: Order) => {
+    window.open(whatsappUrl(orderBrief(order)), '_blank', 'noopener');
+    notify('WhatsApp draft opened — pick a chat and send.', 'success');
+  };
+
+  const emailBrief = (order: Order) => {
+    window.location.href = mailtoUrl(`New order ${order.id} — ${order.client.name}`, orderBrief(order));
+  };
 
   const copyPayload = async (order: Order) => {
     try {
@@ -476,6 +502,26 @@ export function AdminPage() {
                         ),
                       )}
                     </select>
+
+                    <button
+                      type="button"
+                      onClick={() => sendToWhatsApp(selected)}
+                      className="btn-dark text-[11.5px]"
+                      title={`Opens a WhatsApp draft to ${CONTACT.phone}`}
+                    >
+                      <Icon name="whatsapp" size={13} filled className="text-lime" />
+                      Alert on WhatsApp
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => emailBrief(selected)}
+                      className="btn-dark text-[11.5px]"
+                      title={`Opens an email draft to ${CONTACT.email}`}
+                    >
+                      <Icon name="mail" size={13} className="text-lime" />
+                      Email brief
+                    </button>
 
                     <button
                       type="button"

@@ -85,6 +85,20 @@ for (const route of routes) {
       failures.push(`${route}: console errors → ${errors.slice(0, 2).join(' | ').slice(0, 400)}`);
     }
 
+    // Contact details must be the real ones on every page that shows them.
+    if (route === '/') {
+      const hrefs = [...root.querySelectorAll('a[href]')].map((a) => a.getAttribute('href'));
+      if (!hrefs.some((href) => href.includes('wa.me/256768261003'))) {
+        failures.push(`${route}: no WhatsApp link to the real desk number (wa.me/256768261003)`);
+      }
+      if (!text.includes('256 768 261 003')) {
+        failures.push(`${route}: the desk phone number is not rendered`);
+      }
+      if (hrefs.some((href) => /wa\.me\/256700411700/.test(href ?? ''))) {
+        failures.push(`${route}: stale placeholder WhatsApp number still linked`);
+      }
+    }
+
     const probe = text.replace(/\s+/g, ' ').slice(0, 140);
     console.log(`${route.padEnd(22)} ${String(html.length).padStart(6)} chars · ${probe}`);
   } catch (error) {

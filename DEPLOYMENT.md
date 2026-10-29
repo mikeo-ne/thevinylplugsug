@@ -37,6 +37,12 @@ Once `main` is up to date, any Vercel project connected to this repository deplo
 | `SESSION_SECRET` | **yes**  | `openssl rand -hex 32`               | Signs admin session tokens (stateless, 8-hour TTL) |
 | `FX_UGX_PER_USD` | no       | `3750`                               | Indicative rate used across quotes                 |
 | `MAX_UPLOAD_MB`  | no       | `4`                                  | Defaults to 4 on Vercel, 80 elsewhere              |
+| `CONTACT_EMAIL`  | no       | `7hmusicgroupug@gmail.com`           | Shown in the footer, alerts and email replies      |
+| `CONTACT_PHONE`  | no       | `+256 768 261 003`                   | Displayed phone number                             |
+| `CONTACT_WHATSAPP` | no     | `256768261003`                       | Digits only — powers every `wa.me` link            |
+| `MOMO_NUMBER`    | no       | `0768 261 003`                       | MTN merchant number shown at checkout              |
+| `AIRTEL_NUMBER`  | no       | `0700 000 000`                       | Shows "Issued on your invoice" until set           |
+| `BANK_ACCOUNT`   | no       | `Stanbic · 9030000000000`            | Shows "Issued on the invoice" until set            |
 | `DATA_DIR`       | no       | `/tmp/7h-data`                       | Defaults to `/tmp/7h-data` on Vercel               |
 | `UPLOAD_DIR`     | no       | `/tmp/7h-uploads`                    | Defaults to `/tmp/7h-uploads` on Vercel            |
 

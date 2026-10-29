@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, NavLink, useLocation } from 'react-router-dom';
 import { Logo } from '../ui/Logo';
 import { Icon } from '../ui/Icon';
+import { whatsappUrl } from '../../lib/contact';
 
 const links = [
   { label: 'Configurator', to: '/#configurator' },
@@ -71,7 +72,7 @@ export function Nav() {
 
         <div className="flex items-center gap-2.5">
           <a
-            href="https://wa.me/256700411700"
+            href={whatsappUrl()}
             target="_blank"
             rel="noreferrer"
             className="hidden items-center gap-2 rounded-full border border-white/12 px-4 py-2.5 text-[13px] font-medium text-bone transition-colors hover:border-lime/40 hover:text-lime md:inline-flex"

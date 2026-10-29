@@ -4,6 +4,7 @@ import { api, ApiError } from '../lib/api';
 import { useConfig } from '../hooks/useConfig';
 import { useToast } from '../components/ui/Toast';
 import { dateTime, relativeTime, usd, ugx, statusLabel } from '../lib/format';
+import { whatsappUrl } from '../lib/contact';
 import type { Order, WebhookEvent } from '../types';
 import { Icon, type IconName } from '../components/ui/Icon';
 import { StatusPill } from '../components/ui/StatusPill';
@@ -239,9 +240,9 @@ export function SuccessPage() {
 
                     <div className="flex flex-col gap-2 sm:flex-row">
                       <a
-                        href={`https://wa.me/256700411700?text=${encodeURIComponent(
+                        href={whatsappUrl(
                           `Hi 7H Music Group — I've sent the deposit for order ${order.id} (${usd(quote.deposit, { cents: true })}).`,
-                        )}`}
+                        )}
                         target="_blank"
                         rel="noreferrer"
                         className="btn-lime flex-1"
