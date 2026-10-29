@@ -86,6 +86,8 @@ export interface PaymentMethod {
 }
 
 export interface Plant {
+  /** The plant's own inbox (fallback target when our dispatch address is the desk). */
+  repEmail?: string | null;
   id: string;
   name: string;
   country: string;
@@ -161,8 +163,13 @@ export interface ClientDetails {
   email: string;
   phone: string;
   deliveryType: DeliveryType;
+  /** Who signs for the parcel — often not the artist or label contact. */
+  recipientName: string;
   deliveryAddress: string;
   deliveryCity: string;
+  /** State, province, county or Uganda's region — part of a courier label. */
+  deliveryRegion: string;
+  deliveryPostalCode: string;
   country: string;
   notes: string;
 }
@@ -220,7 +227,19 @@ export interface PlantPayload {
   plantPreference: string;
   artistOrLabel: string;
   contact: { email: string; whatsapp: string };
-  delivery: { type: string; address: string; city: string; country: string };
+  delivery: {
+    type: string;
+    recipient?: string;
+    phone?: string;
+    address: string;
+    city: string;
+    region?: string;
+    postalCode?: string;
+    country: string;
+    formatted?: string;
+  };
+  /** The supplier-facing drop-ship slip, ready to forward or print. */
+  dispatch?: DispatchSlip;
   production: {
     quantity: number;
     format: string;
@@ -307,6 +326,8 @@ export interface AdminOverview {
       moq?: number;
       leadTime?: string;
       ordersEmail: string | null;
+      /** The plant's own inbox, printed as the forward-to address on a slip. */
+      repEmail?: string | null;
       /** The plant inbox is really the desk forwarder while no rep is assigned. */
       aliasesDesk?: boolean;
     }[];
@@ -358,6 +379,22 @@ export interface ShopConfig {
   company: CompanyConfig['company'];
 }
 
+export interface DispatchSlip {
+  shipTo: {
+    recipient: string;
+    phone: string;
+    email: string;
+    street: string;
+    city: string;
+    region: string;
+    postalCode: string;
+    country: string;
+    instructions: string;
+  };
+  instructions: string[];
+  slip: string;
+}
+
 export interface ShopOrderItem {
   releaseId: string;
   title: string;
@@ -384,8 +421,11 @@ export interface ShopOrder {
     total: MoneyPair;
   };
   delivery: ShopDeliveryOption & {
+    recipientName?: string | null;
     address: string | null;
     city: string;
+    region?: string | null;
+    postalCode?: string | null;
     country: string;
   };
   payment: {

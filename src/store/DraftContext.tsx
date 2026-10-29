@@ -20,8 +20,11 @@ const emptyClient: ClientDetails = {
   email: '',
   phone: '',
   deliveryType: 'uganda',
+  recipientName: '',
   deliveryAddress: '',
   deliveryCity: '',
+  deliveryRegion: '',
+  deliveryPostalCode: '',
   country: 'Uganda',
   notes: '',
 };

@@ -77,8 +77,12 @@ const server = spawn(process.execPath, [path.resolve('server/index.js')], {
     WHATSAPP_GRAPH_URL: `http://127.0.0.1:${SINK_PORT}/graph`,
     NOTIFY_WHATSAPP_TO: '256768261003',
     PLANT_MOBINEKO_EMAIL: 'orders@mobineko.test',
-    PLANT_GREENLAKES_EMAIL: 'press@greenlakes.test',
-    // Each plant has its own real rep inbox — no forwarding through the desk.
+    // Green Lakes is routed through the desk on purpose (the owner's setup), so
+    // every forwarder path is exercised: desk inbox, no duplicate copy, and the
+    // rep's own address printed as the forward-to target.
+    PLANT_GREENLAKES_EMAIL: 'desk@7h.test',
+    PLANT_GREENLAKES_REP_EMAIL: 'press@greenlakes.test',
+    // The rest go straight to the rep.
     PLANT_SEABASS_EMAIL: 'orders@seabassvinyl.test',
     PLANT_DRDUB_EMAIL: 'info@drdub.test',
     PLANT_GZMEDIA_EMAIL: 'gz@gzmedia.test',
@@ -138,6 +142,9 @@ try {
         deliveryType: 'uganda',
         deliveryAddress: 'Plot 14, Bukoto Street, Kampala',
         deliveryCity: 'Kampala',
+        deliveryRegion: 'Central',
+        deliveryPostalCode: '00256',
+        recipientName: 'Recipient Name',
         country: 'Uganda',
         notes: 'Automated pipeline check',
       },
@@ -184,6 +191,32 @@ try {
   check(blocked.body.code === 'deposit_required', 'refusal names the deposit gate', String(blocked.body.code));
   check(blocked.body.error === 'Confirm the deposit first — suppliers are only contacted once the deposit is paid.', 'refusal reads clearly');
   check(received.length === 0, 'nothing left the building', `${received.length} outbound request(s)`);
+
+  // A status dropdown must not be able to claim the plant has the order, and a
+  // part-payment must not be recorded as a deposit.
+  const faked = await json(`/api/admin/orders/${orderId}`, {
+    method: 'PATCH',
+    ...auth,
+    body: JSON.stringify({ status: 'forwarded' }),
+  });
+  check(faked.res.status === 409, 'cannot mark "at plant" without a release', `status ${faked.res.status}`);
+  check(faked.body.code === 'plant_not_released', 'the refusal names the release gate', String(faked.body.code));
+
+  const short = await json(`/api/admin/orders/${orderId}/payment`, {
+    method: 'POST',
+    ...auth,
+    body: JSON.stringify({ amount: 100 }),
+  });
+  check(short.res.status === 409, 'a part-payment is refused as a deposit', `status ${short.res.status}`);
+  check(short.body.code === 'deposit_incomplete', 'the refusal names the shortfall', String(short.body.code));
+  check(short.body.shortfallUsd > 0, 'and reports how much is missing', String(short.body.shortfallUsd));
+  check(received.length === 0, 'still nothing sent to a supplier', `${received.length} outbound request(s)`);
+  const stillHeld = await json(`/api/orders/${orderId}`);
+  check(
+    stillHeld.body.order?.payment?.status !== 'deposit_paid' && stillHeld.body.order?.payment?.status !== 'paid',
+    'the order does not read as deposit-paid',
+    String(stillHeld.body.order?.payment?.status),
+  );
   const heldOrder = await json(`/api/orders/${orderId}`);
   check(heldOrder.body.order?.status !== 'forwarded', 'order is not marked forwarded', String(heldOrder.body.order?.status));
   const holdEvent = (heldOrder.body.events ?? []).find((event) => event.channel === 'plant');
@@ -273,6 +306,9 @@ try {
         deliveryType: 'uganda',
         deliveryAddress: 'Plot 21, Ntinda Road, Kampala',
         deliveryCity: 'Kampala',
+        deliveryRegion: 'Central',
+        deliveryPostalCode: '00256',
+        recipientName: 'Recipient Name',
         country: 'Uganda',
       },
       configuration: { quantity: 50, vinylTypeId: 'lp_standard', sleeveId: 'standard' },
@@ -315,9 +351,85 @@ try {
   );
   const autoShared = (await json('/api/admin/overview', auth)).body.automation ?? {};
   check(autoShared.depositRequired === true, 'console reports the deposit gate as enforced');
+  section('A plant routed through the desk is flagged, not hidden');
+  const plantRouting = autoShared.plants ?? [];
+  const aliased = plantRouting.filter((plant) => plant.aliasesDesk);
+  check(aliased.length === 1 && aliased[0].id === 'greenlakes', 'the console flags the forwarder plant', JSON.stringify(aliased.map((p) => p.id)));
+  check(aliased[0]?.repEmail === 'press@greenlakes.test', 'and prints the rep address to forward to', String(aliased[0]?.repEmail));
   check(
-    (autoShared.plants ?? []).every((plant) => !plant.aliasesDesk),
-    'no plant is routed through the desk inbox',
+    plantRouting.filter((plant) => !plant.aliasesDesk).every((plant) => plant.ordersEmail),
+    'every other plant still has a direct dispatch address',
+  );
+
+  /* ------------------------------ routed through the desk, once only ---- */
+  received.length = 0;
+  const routed = await json('/api/orders', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      client: {
+        name: 'Desk Forwarder Check',
+        email: 'deskroute@example.test',
+        phone: '+256768261003',
+        deliveryType: 'uganda',
+        deliveryAddress: 'Plot 9, Bukoto Street, Kampala',
+        deliveryCity: 'Kampala',
+        deliveryRegion: 'Central',
+        deliveryPostalCode: '00256',
+        recipientName: 'Recipient Name',
+        country: 'Uganda',
+      },
+      configuration: { quantity: 100, vinylTypeId: 'lp_standard', sleeveId: 'standard' },
+      payment: { method: 'mtn_momo' },
+      audioLink: 'https://example.test/master.wav',
+      artworkLink: 'https://example.test/cover.pdf',
+      termsAccepted: true,
+      plantPreference: 'greenlakes',
+    }),
+  });
+  check(routed.res.status === 201, '100-unit Green Lakes order created', `status ${routed.res.status}`);
+  await json(`/api/admin/orders/${routed.body.order.id}/payment`, {
+    method: 'POST',
+    ...auth,
+    body: JSON.stringify({}),
+  });
+  const deskMail = received
+    .filter((entry) => entry.path === '/resend')
+    .filter((entry) => /Production request/.test(String(entry.body?.subject ?? '')));
+  check(deskMail.length === 1, 'one dispatch email, not a copy per recipient', `${deskMail.length}`);
+  check(
+    JSON.stringify(deskMail[0]?.body?.to) === JSON.stringify(['desk@7h.test']),
+    'addressed to the 7H inbox',
+    JSON.stringify(deskMail[0]?.body?.to),
+  );
+  check(
+    !(deskMail[0]?.body?.bcc ?? []).map((address) => address.toLowerCase()).includes('desk@7h.test'),
+    'and never BCC’d to itself',
+    JSON.stringify(deskMail[0]?.body?.bcc),
+  );
+  const deskBody = String(deskMail[0]?.body?.text ?? '');
+  check(deskBody.includes('ROUTE VIA DESK'), 'the body says it needs forwarding');
+  check(deskBody.includes('press@greenlakes.test'), 'and names the rep to forward to');
+  check(
+    String(deskMail[0]?.body?.subject ?? '').includes('Green Lakes'),
+    'the subject still names the plant for triage',
+    String(deskMail[0]?.body?.subject).slice(0, 70),
+  );
+
+  /* ------------------------------- the drop-ship dispatch slip ---------- */
+  section('The supplier email carries a forwardable dispatch slip');
+  check(deskBody.includes('DROP-SHIP DISPATCH SLIP'), 'the slip is in the plain-text body');
+  check(deskBody.includes('7H-2026-'), 'the slip carries the order reference', '7H ref present');
+  check(deskBody.includes('Recipient Name'), 'the recipient name is printed');
+  check(deskBody.includes('Bukoto Street'), 'the street / plot number is printed');
+  check(deskBody.includes('Kampala'), 'the city is printed');
+  check(deskBody.includes('Central'), 'the region is printed');
+  check(deskBody.includes('00256'), 'the postal code is printed');
+  check(deskBody.includes('Uganda'), 'the country is printed');
+  check(/SHIP TO/.test(deskBody), 'and it is labelled as a ship-to block');
+  check(
+    String(deskMail[0]?.body?.html ?? '').includes('Drop-ship'),
+    'the HTML version carries the slip too',
   );
 
   /* --------------------------------------- retry re-sends a failure ---- */

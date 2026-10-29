@@ -174,7 +174,7 @@ export function AdminPage() {
   const copyPayload = async (order: Order) => {
     try {
       await navigator.clipboard.writeText(order.plantPayloadText ?? '');
-      notify('Plant payload copied to clipboard.', 'success');
+      notify('Drop-ship dispatch slip copied — ready to forward.', 'success');
     } catch {
       notify('Copy failed — select the payload manually.', 'error');
     }
@@ -267,6 +267,10 @@ export function AdminPage() {
             />
           </div>
         )}
+
+        {overview?.automation?.plants?.length ? (
+          <PlantRoutingPanel plants={overview.automation.plants} />
+        ) : null}
 
         {overview && !overview.notifications?.configured && (
           <div className="mb-5 rounded-xl border border-amber-400/25 bg-amber-400/[0.06] px-4 py-3.5">
@@ -416,9 +420,18 @@ export function AdminPage() {
                       value={selected.client.phone}
                       link={`https://wa.me/${selected.client.phone.replace(/[^0-9]/g, '')}`}
                     />
+                    <Detail label="Ship to" value={selected.client.recipientName || selected.client.name} />
                     <Detail
-                      label="Deliver to"
-                      value={`${selected.client.deliveryAddress}, ${selected.client.deliveryCity}, ${selected.client.country}`}
+                      label="Address"
+                      value={[
+                        selected.client.deliveryAddress,
+                        [selected.client.deliveryCity, selected.client.deliveryRegion, selected.client.deliveryPostalCode]
+                          .filter(Boolean)
+                          .join(', '),
+                        selected.client.country,
+                      ]
+                        .filter(Boolean)
+                        .join('\n')}
                     />
                     {selected.client.notes && <Detail label="Notes" value={selected.client.notes} />}
                   </Panel>
@@ -587,7 +600,7 @@ export function AdminPage() {
                       className="btn-dark ml-auto text-[11.5px]"
                     >
                       <Icon name="copy" size={13} />
-                      Copy plant payload
+                      Copy dispatch slip
                     </button>
                   </div>
 
@@ -849,6 +862,76 @@ function LoginScreen({ onSuccess }: { onSuccess: (token: string) => void }) {
   );
 }
 
+/**
+ * Where each plant's dispatch mail actually goes.
+ *
+ * Four of our plants can be routed to the 7H inbox so one person can forward
+ * them on with the slip attached. That is a deliberate setup, not a fault — but
+ * it must be visible, so nobody assumes a rep was emailed directly when the
+ * desk was.
+ */
+function PlantRoutingPanel({
+  plants,
+}: {
+  plants: NonNullable<AdminOverview['automation']>['plants'];
+}) {
+  return (
+    <div className="panel mb-5 overflow-hidden">
+      <div className="flex items-center justify-between border-b border-white/[0.07] px-4 py-3">
+        <div>
+          <h3 className="text-[11px] font-semibold uppercase tracking-[0.16em] text-bone">
+            Plant dispatch routing
+          </h3>
+          <p className="mt-0.5 text-[10.5px] text-muted">
+            Where each supplier's slip is sent once a deposit clears
+          </p>
+        </div>
+        <span className="rounded-full bg-white/[0.06] px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-muted">
+          {plants.filter((plant) => plant.aliasesDesk).length} via desk
+        </span>
+      </div>
+      <ul className="divide-y divide-white/[0.05]">
+        {plants.map((plant) => (
+          <li key={plant.id} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 px-4 py-2.5">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 text-[12.5px] text-bone">
+                {plant.name}
+                <span className="text-[10px] text-muted">MOQ {plant.moq ?? '—'}</span>
+              </div>
+              <div className="mt-0.5 truncate text-[10.5px] text-muted">
+                {plant.ordersEmail ? (
+                  <>
+                    To <span className="text-bone/70">{plant.ordersEmail}</span>
+                    {plant.aliasesDesk && plant.repEmail ? (
+                      <>
+                        {' · forward to '}
+                        <span className="text-bone/70">{plant.repEmail}</span>
+                      </>
+                    ) : null}
+                  </>
+                ) : (
+                  'No dispatch address'
+                )}
+              </div>
+            </div>
+            <span
+              className={`rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] ${
+                !plant.ordersEmail
+                  ? 'bg-white/[0.08] text-muted'
+                  : plant.aliasesDesk
+                    ? 'bg-amber-400/15 text-amber-200'
+                    : 'bg-lime/15 text-lime'
+              }`}
+            >
+              {!plant.ordersEmail ? 'not set' : plant.aliasesDesk ? 'via 7H desk' : 'direct'}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function PipelineChip({ title, ok, detail }: { title: string; ok: boolean; detail: string }) {
   return (
     <div
@@ -906,7 +989,7 @@ function Detail({ label, value, link }: { label: string; value: string; link?: s
           {value}
         </a>
       ) : (
-        <span className="max-w-[70%] break-words text-right text-bone/85">{value}</span>
+        <span className="max-w-[70%] whitespace-pre-line break-words text-right text-bone/85">{value}</span>
       )}
     </div>
   );

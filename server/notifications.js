@@ -10,6 +10,7 @@
 import { COMPANY, PAYMENT_METHODS } from './config.js';
 import { describeConfiguration, PRESSING_PLANTS } from '../shared/pricing.js';
 import { describeShopOrder } from '../shared/shop.js';
+import { addressLines, buildDispatchSlip, orderAddress } from '../shared/address.js';
 
 const REQUEST_TIMEOUT = 8000;
 
@@ -98,14 +99,22 @@ export function buildOrderNotification(order) {
 
   const summary = orderSummaryLine(order);
 
+  // The desk forwards these on when a plant inbox points at us, so this email
+  // has to be enough on its own: the full door-to-door address, then the same
+  // drop-ship slip the plant would receive.
+  const shipTo = orderAddress(order);
+  const dispatchSlip =
+    order.plantPayload?.dispatch?.slip ??
+    buildDispatchSlip(order, { contents: [`${config.quantity} × ${config.vinyl}`, config.sleeve] });
+
   const text = [
     `7H MUSIC GROUP — NEW VINYL ORDER`,
     ``,
     `Order:      ${order.id}`,
     `Artist:     ${order.client.name}`,
     `Contact:    ${order.client.email} / ${order.client.phone}`,
-    `Delivery:   ${order.client.deliveryCity}, ${order.client.country} (${order.client.deliveryType})`,
-    `Address:    ${order.client.deliveryAddress}`,
+    `Delivery:   ${shipTo.city}, ${shipTo.country} (${order.client.deliveryType})`,
+    `Address:    ${addressLines(shipTo).join(' · ')}`,
     ``,
     `Format:     ${config.quantity} × ${config.vinyl}`,
     `Packaging:  ${config.sleeve}`,
@@ -119,6 +128,11 @@ export function buildOrderNotification(order) {
     ``,
     `Files:      ${files.length ? files.map((file) => file.originalName).join(', ') : 'pending upload'}`,
     ...linkLines,
+    ``,
+    `--- SUPPLIER DROP-SHIP SLIP (forward as-is) ---------------------------------`,
+    ``,
+    dispatchSlip ?? 'No postal address on this order — collection in Kampala.',
+    ``,
     order.client.notes ? `Notes:      ${order.client.notes}` : null,
     ``,
     `Open console: ${process.env.PUBLIC_BASE_URL ?? 'https://thevinylplugsug.vercel.app'}/admin`,
@@ -142,7 +156,7 @@ export function buildOrderNotification(order) {
           ${row('Artist / Label', order.client.name)}
           ${row('Email', `<a href="mailto:${order.client.email}" style="color:#0a7a3d">${order.client.email}</a>`)}
           ${row('WhatsApp', `<a href="https://wa.me/${order.client.phone.replace(/[^0-9]/g, '')}" style="color:#0a7a3d">${order.client.phone}</a>`)}
-          ${row('Deliver to', `${order.client.deliveryAddress}, ${order.client.deliveryCity}, ${order.client.country}`)}
+          ${row('Deliver to', addressLines(shipTo).join('<br>'))}
           ${row('Format', `${config.quantity} × ${config.vinyl}`)}
           ${row('Packaging', config.sleeve)}
           ${row('Plant', plant)}
@@ -151,6 +165,14 @@ export function buildOrderNotification(order) {
           ${row('Files', files.length ? files.map((file) => file.originalName).join('<br>') : 'Pending upload')}
           ${order.client.notes ? row('Notes', order.client.notes) : ''}
         </table>
+        ${
+          dispatchSlip
+            ? `<div style="margin-top:18px;border:1px dashed #c9c9c0;border-radius:10px;padding:14px">
+                 <div style="font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:#8a8a82;font-weight:600;margin-bottom:8px">Supplier drop-ship slip</div>
+                 <pre style="margin:0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;line-height:1.55;color:#121212;white-space:pre-wrap">${dispatchSlip.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</pre>
+               </div>`
+            : ''
+        }
         <a href="${process.env.PUBLIC_BASE_URL ?? 'https://thevinylplugsug.vercel.app'}/admin"
            style="display:inline-block;margin-top:18px;background:#CCFF00;color:#121212;text-decoration:none;padding:11px 20px;border-radius:999px;font-size:13px;font-weight:600">
           Open operations console
@@ -384,12 +406,33 @@ export async function emailPlantOrder(order, plant, plantId) {
 
   const base = (process.env.PUBLIC_BASE_URL ?? 'https://thevinylplugsug.vercel.app').replace(/\/$/, '');
   const payload = order.plantPayload ?? null;
+
+  // When a plant's dispatch address is really the 7H desk, the email arrives at
+  // 7hmusicgroupug@gmail.com and a human forwards it on. Say so at the top, and
+  // print where it goes — otherwise the desk has to guess which plant a slip is
+  // for even though the subject names it.
+  const deskAddresses = notificationConfig()
+    .emailTo.split(',')
+    .map((address) => address.trim().toLowerCase())
+    .filter(Boolean);
+  const routedViaDesk = deskAddresses.includes(String(to).toLowerCase());
+  const forwardTo = plant?.repEmail || null;
   const files = [...(order.files?.audio ?? []), ...(order.files?.artwork ?? [])];
   const describe = describeConfiguration(order.configuration);
   const config = notificationConfig();
 
   const text = [
     `PRODUCTION REQUEST — ${order.id}`,
+    ...(routedViaDesk
+      ? [
+          ``,
+          `ROUTE VIA DESK — sent to 7H, forward to ${plant?.name ?? plantId}.`,
+          forwardTo
+            ? `Forward to:  ${forwardTo}`
+            : `Forward to:  ${plant?.name ?? plantId} (set PLANT_${String(plantId).toUpperCase()}_REP_EMAIL to print the address here)`,
+          `Keep the subject line — it names the plant so one mailbox stays sorted.`,
+        ]
+      : []),
     ``,
     plantPayloadTextOf(order),
     ``,
@@ -409,7 +452,7 @@ export async function emailPlantOrder(order, plant, plantId) {
     ['Format', `${describe.quantity} × ${describe.vinyl}`],
     ['Packaging', describe.sleeve],
     ['Turnaround', describe.turnaround ?? '—'],
-    ['Deliver to', `${order.client.deliveryAddress}, ${order.client.deliveryCity}, ${order.client.country}`],
+    ['Ship to', addressLines(orderAddress(order)).join('<br>')],
     ['Deposit', `${money(order.quote.deposit)} · ${paymentLabel(order.payment.method)} · ${order.payment.status}`],
     ['Notes', order.client.notes || '—'],
   ]
@@ -418,6 +461,10 @@ export async function emailPlantOrder(order, plant, plantId) {
         `<tr><td style="padding:6px 12px 6px 0;color:#8a8a82;font-size:12px;white-space:nowrap">${label}</td><td style="padding:6px 0;color:#121212;font-size:13px">${value}</td></tr>`,
     )
     .join('');
+
+  const slip =
+    order.plantPayload?.dispatch?.slip ??
+    buildDispatchSlip(order, { contents: [`${describe.quantity} × ${describe.vinyl}`, describe.sleeve] });
 
   const links = files
     .map(
@@ -435,7 +482,23 @@ export async function emailPlantOrder(order, plant, plantId) {
         <div style="color:#a8a8a0;font-size:12px;margin-top:4px">Issued by 7H Music Group on deposit confirmation</div>
       </div>
       <div style="padding:20px 24px">
+        ${
+          routedViaDesk
+            ? `<div style="border:1px solid #CCFF00;background:#f7ffd6;border-radius:10px;padding:12px 14px;margin-bottom:16px">
+                 <div style="font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:#4d6600;font-weight:600">Route via desk</div>
+                 <div style="font-size:13px;color:#121212;margin-top:4px">Forward this request to <strong>${plant?.name ?? plantId}</strong>${forwardTo ? ` — <a href="mailto:${forwardTo}" style="color:#0a7a3d">${forwardTo}</a>` : ''}.</div>
+               </div>`
+            : ''
+        }
         <table style="border-collapse:collapse;width:100%">${rows}</table>
+        ${
+          slip
+            ? `<div style="margin-top:18px;border:1px dashed #c9c9c0;border-radius:10px;padding:14px">
+                 <div style="font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:#8a8a82;font-weight:600;margin-bottom:8px">Drop-ship dispatch slip — forward as-is</div>
+                 <pre style="margin:0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;line-height:1.55;color:#121212;white-space:pre-wrap">${slip.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</pre>
+               </div>`
+            : ''
+        }
         <div style="margin-top:18px;font-size:13px;font-weight:600;color:#121212">Master &amp; artwork</div>
         <ul style="padding-left:18px;margin:8px 0 0;font-size:12.5px">${links || '<li>Pending upload</li>'}</ul>
         <p style="margin:18px 0 0;font-size:12px;color:#8a8a82">
@@ -548,7 +611,7 @@ export function buildShopNotification(order) {
     `Total:      ${shopMoney(order.total)} (${ugxText(order.totals.total.ugx)})`,
     `Payment:    ${paymentLabel(order.payment.method)} (${order.payment.status})`,
     order.delivery.requiresAddress
-      ? `Ship to:    ${order.delivery.address}, ${order.delivery.city}, ${order.delivery.country}`
+      ? `Ship to:    ${addressLines(orderAddress(order)).join(' · ')}`
       : `Ship to:    Pick up at the Kampala studio`,
     order.buyer.notes ? `Notes:      ${order.buyer.notes}` : null,
     ``,
@@ -577,7 +640,7 @@ export function buildShopNotification(order) {
             .map((item) => row(`${item.quantity} × ${item.title}`, `${item.release} · ${shopMoney(item.lineTotal)}`))
             .join('')}
           ${row('Delivery', `${order.delivery.name} · ${shopMoney(order.shipping)}`)}
-          ${order.delivery.requiresAddress ? row('Address', `${order.delivery.address}, ${order.delivery.city}, ${order.delivery.country}`) : ''}
+          ${order.delivery.requiresAddress ? row('Ship to', addressLines(orderAddress(order)).join('<br>')) : ''}
           ${row('Total', `<strong>${shopMoney(order.total)}</strong> · ${ugxText(order.totals.total.ugx)}`)}
           ${row('Payment', `${paymentLabel(order.payment.method)} · ${order.payment.status}`)}
           ${order.buyer.notes ? row('Notes', order.buyer.notes) : ''}
@@ -621,7 +684,7 @@ export function buildShopReceipt(order) {
     ``,
     `Delivery: ${order.delivery.name} · ${order.delivery.eta}`,
     order.delivery.requiresAddress
-      ? `Address:  ${order.delivery.address}, ${order.delivery.city}, ${order.delivery.country}`
+      ? `Address:  ${addressLines(orderAddress(order)).join(', ')}`
       : `Pick up:  Ntinda studio, Mon–Sat 09:00–19:00 (quote ${order.id})`,
     ``,
     `Track it any time: ${base}/shop/order/${order.id}`,
@@ -645,7 +708,7 @@ export function buildShopReceipt(order) {
           ${row('Total', `<strong>${shopMoney(order.total)}</strong> · ${ugxText(order.totals.total.ugx)}`)}
         </table>
         <p style="margin:16px 0 0;color:#121212;font-size:13px;line-height:1.6">${payLine}</p>
-        <p style="margin:10px 0 0;color:#6b6b63;font-size:12px;line-height:1.6">${order.delivery.eta}${order.delivery.requiresAddress ? ` · ${order.delivery.address}, ${order.delivery.city}` : ' · Ntinda studio pickup'}</p>
+        <p style="margin:10px 0 0;color:#6b6b63;font-size:12px;line-height:1.6">${order.delivery.eta}${order.delivery.requiresAddress ? ` · ${addressLines(orderAddress(order)).slice(2).join(', ')}` : ' · Ntinda studio pickup'}</p>
         <a href="${base}/shop/order/${order.id}" style="display:inline-block;margin-top:18px;background:#CCFF00;color:#121212;text-decoration:none;padding:11px 20px;border-radius:999px;font-size:13px;font-weight:600">View your order</a>
       </div>
     </div>

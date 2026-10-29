@@ -124,7 +124,11 @@ export const SLEEVE_OPTIONS = [
  * `moq` is the smallest run the plant will take (a lathe house takes one, a
  * plant-run house needs 250), `maxQuantity` caps plants that only do boutique
  * work, and `priceFactor` is their rate card relative to our base quote.
- * `ordersEmail` is where the automated spec sheet lands after a deposit.
+ *
+ * `ordersEmail` is where the automated spec sheet is *sent*. When it points at
+ * the 7H desk (all four of our active plants can be routed there), `repEmail` is
+ * the plant's own inbox and is printed on the dispatch slip as the forwarding
+ * target — so one inbox can triage without guessing who to forward to.
  */
 export const PRESSING_PLANTS = [
   {
@@ -139,6 +143,9 @@ export const PRESSING_PLANTS = [
     leadTime: '9–11 weeks',
     note: 'Colour vinyl, gatefold and consolidated freight to Kampala.',
     ordersEmail: process.env.PLANT_MOBINEKO_EMAIL ?? null,
+    /** The plant's own inbox — printed as the forwarding target when our
+     *  dispatch address is really the 7H desk. */
+    repEmail: process.env.PLANT_MOBINEKO_REP_EMAIL ?? 'web@mobineko.com',
   },
   {
     id: 'greenlakes',
@@ -152,6 +159,9 @@ export const PRESSING_PLANTS = [
     leadTime: '7–10 weeks',
     note: 'Recycled compound vinyl, bio-wrap, fastest EU dispatch.',
     ordersEmail: process.env.PLANT_GREENLAKES_EMAIL ?? null,
+    /** The plant's own inbox — printed as the forwarding target when our
+     *  dispatch address is really the 7H desk. */
+    repEmail: process.env.PLANT_GREENLAKES_REP_EMAIL ?? 'hi@greenlakespressing.com',
   },
   {
     id: 'seabass',
@@ -165,6 +175,9 @@ export const PRESSING_PLANTS = [
     leadTime: '8–12 weeks',
     note: 'Small-batch UK pressing with hand-checked test presses.',
     ordersEmail: process.env.PLANT_SEABASS_EMAIL ?? null,
+    /** The plant's own inbox — printed as the forwarding target when our
+     *  dispatch address is really the 7H desk. */
+    repEmail: process.env.PLANT_SEABASS_REP_EMAIL ?? 'orders@seabassvinyl.com',
   },
   {
     id: 'drdub',
@@ -178,6 +191,9 @@ export const PRESSING_PLANTS = [
     leadTime: '3–5 weeks',
     note: 'Lathe cut one record at a time — our only route below 25 units.',
     ordersEmail: process.env.PLANT_DRDUB_EMAIL ?? null,
+    /** The plant's own inbox — printed as the forwarding target when our
+     *  dispatch address is really the 7H desk. */
+    repEmail: process.env.PLANT_DRDUB_REP_EMAIL ?? 'info@drdub.com',
   },
   {
     id: 'gzmedia',
@@ -191,6 +207,9 @@ export const PRESSING_PLANTS = [
     leadTime: '8–10 weeks',
     note: 'Largest pressing capacity in Europe — the cheapest per unit at volume.',
     ordersEmail: process.env.PLANT_GZMEDIA_EMAIL ?? null,
+    /** The plant's own inbox — printed as the forwarding target when our
+     *  dispatch address is really the 7H desk. */
+    repEmail: process.env.PLANT_GZMEDIA_REP_EMAIL ?? 'gz@gzmedia.cz',
   },
   {
     id: 'deepgrooves',
@@ -204,6 +223,9 @@ export const PRESSING_PLANTS = [
     leadTime: '9–12 weeks',
     note: 'Audiophile-grade plating on 100% green energy, Dutch pressing.',
     ordersEmail: process.env.PLANT_DEEPGROOVES_EMAIL ?? null,
+    /** The plant's own inbox — printed as the forwarding target when our
+     *  dispatch address is really the 7H desk. */
+    repEmail: process.env.PLANT_DEEPGROOVES_REP_EMAIL ?? 'info@deepgrooves.eu',
   },
 ];
 

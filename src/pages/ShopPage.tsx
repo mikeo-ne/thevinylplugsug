@@ -39,7 +39,18 @@ export function ShopPage() {
   const [shop, setShop] = useState<ShopConfig | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [deliveryId, setDeliveryId] = useState('kampala');
-  const [payer, setPayer] = useState({ name: '', email: '', phone: '', address: '', city: 'Kampala', country: 'Uganda', notes: '' });
+  const [payer, setPayer] = useState({
+    name: '',
+    recipient: '',
+    email: '',
+    phone: '',
+    address: '',
+    city: 'Kampala',
+    region: '',
+    postalCode: '',
+    country: 'Uganda',
+    notes: '',
+  });
   const [method, setMethod] = useState('mtn_momo');
   const [errors, setErrors] = useState<Errors>({});
   const [submitting, setSubmitting] = useState(false);
@@ -120,6 +131,9 @@ export function ShopPage() {
     if (!PHONE_RE.test(payer.phone.trim())) next.phone = 'Include your country code, e.g. +256 772 000 000.';
     if (delivery?.requiresAddress && payer.address.trim().length < 6) next.address = 'Add the full delivery address.';
     if (delivery?.requiresAddress && payer.city.trim().length < 2) next.city = 'Add the town or city.';
+    if (delivery?.requiresAddress && payer.region.trim().length < 2) {
+      next.region = 'Add the region, state or county — the courier needs it.';
+    }
     if (delivery?.zone === 'international' && payer.country.trim().length < 2) next.country = 'Add the country.';
     return next;
   };
@@ -146,8 +160,11 @@ export function ShopPage() {
         items: detailed.map(({ release, quantity }) => ({ releaseId: release.id, quantity })),
         delivery: {
           id: deliveryId,
+          recipientName: payer.recipient.trim() || payer.name.trim(),
           address: payer.address.trim(),
           city: payer.city.trim(),
+          region: payer.region.trim(),
+          postalCode: payer.postalCode.trim(),
           country: payer.country.trim() || 'Uganda',
         },
         payment: { method, payerPhone: payer.phone.trim() },
@@ -530,6 +547,15 @@ export function ShopPage() {
                       />
                     </Field>
                     <div className="grid gap-3 sm:grid-cols-2">
+                      <Field label="Recipient name" hint="If it is a gift or a different person signs">
+                        <input
+                          className="input"
+                          value={payer.recipient}
+                          onChange={(event) => setPayer({ ...payer, recipient: event.target.value })}
+                          placeholder={payer.name || 'Same as above'}
+                          autoComplete="name"
+                        />
+                      </Field>
                       <Field label="Town / city" error={errors.city}>
                         <input
                           className={`input ${errors.city ? 'input-error' : ''}`}
@@ -538,7 +564,24 @@ export function ShopPage() {
                           autoComplete="address-level2"
                         />
                       </Field>
-                      <Field label="Country" error={errors.country}>
+                      <Field label="Region / state / county" error={errors.region}>
+                        <input
+                          className={`input ${errors.region ? 'input-error' : ''}`}
+                          value={payer.region}
+                          onChange={(event) => setPayer({ ...payer, region: event.target.value })}
+                          placeholder={delivery.zone === 'uganda' ? 'Central' : 'Greater London'}
+                          autoComplete="address-level1"
+                        />
+                      </Field>
+                      <Field label="Postal / ZIP code" hint="Leave blank if your country has none">
+                        <input
+                          className="input"
+                          value={payer.postalCode}
+                          onChange={(event) => setPayer({ ...payer, postalCode: event.target.value })}
+                          autoComplete="postal-code"
+                        />
+                      </Field>
+                      <Field label="Country" error={errors.country} className="sm:col-span-2">
                         <input
                           className={`input ${errors.country ? 'input-error' : ''}`}
                           value={payer.country}
@@ -662,12 +705,28 @@ export function ShopPage() {
   );
 }
 
-function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
+function Field({
+  label,
+  hint,
+  error,
+  className,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  error?: string;
+  className?: string;
+  children: React.ReactNode;
+}) {
   return (
-    <label className="block">
+    <label className={`block ${className ?? ''}`}>
       <span className="label">{label}</span>
       {children}
-      {error && <span className="mt-1 block text-[11.5px] text-red-400">{error}</span>}
+      {error ? (
+        <span className="mt-1 block text-[11.5px] text-red-400">{error}</span>
+      ) : hint ? (
+        <span className="mt-1 block text-[10.5px] text-muted">{hint}</span>
+      ) : null}
     </label>
   );
 }

@@ -14,6 +14,7 @@ import {
   whatsappTemplateSample,
 } from './notifications.js';
 import { describeShopOrder } from '../shared/shop.js';
+import { addressLines, buildDispatchSlip, normaliseAddressOrder, orderAddress } from '../shared/address.js';
 
 const CHANNELS = {
   slack: { label: 'Slack', icon: 'hash', delay: 900, autoDeliver: true },
@@ -55,6 +56,16 @@ export function buildPlantPayload(order) {
   const config = describeConfiguration(order.configuration);
   const plant =
     PRESSING_PLANTS.find((item) => item.id === (order.configuration?.plantId ?? order.plantPreference)) ?? null;
+  const shipTo = orderAddress(order);
+  const dispatch = buildDispatchSlip(order, {
+    plant,
+    releasedAt: order.payment?.confirmedAt ?? null,
+    contents: [
+      `${config.quantity} × ${config.vinyl}`,
+      config.sleeve,
+      ...(config.quantity === 1 ? ['Lathe cut — 1-of-1 dubplate'] : []),
+    ],
+  });
   const files = [...(order.files?.audio ?? []), ...(order.files?.artwork ?? [])].map((file) => ({
     role: file.kind,
     filename: file.originalName,
@@ -74,10 +85,27 @@ export function buildPlantPayload(order) {
     },
     delivery: {
       type: order.client.deliveryType,
-      address: order.client.deliveryAddress,
-      city: order.client.deliveryCity,
-      country: order.client.country,
+      recipient: shipTo.recipient,
+      phone: shipTo.phone,
+      address: shipTo.street,
+      city: shipTo.city,
+      region: shipTo.region,
+      postalCode: shipTo.postalCode,
+      country: shipTo.country,
+      formatted: addressLines(shipTo).join(' · '),
     },
+    // The drop-ship slip the plant (or our desk, before forwarding) prints.
+    dispatch: dispatch
+      ? {
+          shipTo,
+          instructions: [
+            'Direct-to-customer drop-ship — do not return to the 7H desk.',
+            `Mark the customs declaration "pressed vinyl, order ${order.id}".`,
+            'Send the tracking number back so we can pass it to the customer.',
+          ],
+          slip: dispatch,
+        }
+      : null,
     production: {
       quantity: config.quantity,
       format: config.vinyl,
@@ -104,17 +132,30 @@ export function buildPlantPayload(order) {
 export function plantPayloadText(order) {
   const payload = buildPlantPayload(order);
   const config = describeConfiguration(order.configuration);
+  const plant = PRESSING_PLANTS.find((p) => p.id === payload.plantPreference) ?? null;
   const files = payload.masterAndArtwork
     .map((file, index) => `   ${index + 1}. ${file.role.toUpperCase()} — ${file.filename}`)
     .join('\n');
 
-  return `7H MUSIC GROUP — PRODUCTION REQUEST
-Order:      ${order.id}
-Plant:      ${PRESSING_PLANTS.find((p) => p.id === payload.plantPreference)?.name ?? payload.plantPreference}
+  // The slip is the part a plant actually acts on, so it leads. Everything a
+  // supplier needs to address the parcel is here — no attachment to open, no
+  // second email to ask for the customer's phone number.
+  const slip =
+    payload.dispatch?.slip ??
+    buildDispatchSlip(order, {
+      plant,
+      contents: [`${config.quantity} × ${config.vinyl}`, config.sleeve],
+    }) ??
+    '';
+
+  return `${slip}
+
+────────────────────────────────────────────
+PRODUCTION REQUEST — ${order.id}
+Plant:      ${plant?.name ?? payload.plantPreference}
 Artist:     ${order.client.name}
 Format:     ${config.quantity} × ${config.vinyl}
 Packaging:  ${config.sleeve}
-Delivery:   ${deliveryLabel(order.client)} — ${order.client.deliveryAddress}
 Contact:    ${order.client.email} / ${order.client.phone}
 Total:      $${order.quote.total.toFixed(2)} (UGX ${order.quote.totals.total.ugx.toLocaleString('en-US')})
 Deposit:    $${order.quote.deposit.toFixed(2)} · ${paymentLabel(order.payment.method)} · ${order.payment.status}
@@ -384,12 +425,14 @@ export function reconcileEvents(now = Date.now()) {
  * plant's email inbox and its webhook in parallel — whichever is configured —
  * and records one `plant` event with the combined result.
  */
-export async function forwardOrderToPlant(order, plantId, actor = 'management', { force = false } = {}) {
+export async function forwardOrderToPlant(order, plantId, actor = 'management') {
   const plant = PRESSING_PLANTS.find((item) => item.id === plantId) ?? PRESSING_PLANTS[0];
 
-  // The commercial gate. No deposit, no production request — even for a manual
-  // forward from the console, unless the caller explicitly forces it.
-  if (!force && !depositConfirmed(order)) {
+  // The commercial gate, and it has no override. A supplier is contacted only
+  // after an admin has recorded the deposit as paid against this order: not on
+  // submission, not by an automation flag, not through a status edit. The one
+  // way past it is to confirm the payment in the console first.
+  if (!depositConfirmed(order)) {
     const now = new Date().toISOString();
     order.plantHandoff = {
       plant: plant.id,
