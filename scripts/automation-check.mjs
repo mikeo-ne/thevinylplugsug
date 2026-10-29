@@ -77,6 +77,9 @@ const server = spawn(process.execPath, [path.resolve('server/index.js')], {
     NOTIFY_WHATSAPP_TO: '256768261003',
     PLANT_MOBINEKO_EMAIL: 'orders@mobineko.test',
     PLANT_GREENLAKES_EMAIL: 'press@greenlakes.test',
+    // A plant whose order inbox is still a desk forwarder — the live setup
+    // until each rep hands over their real address.
+    PLANT_SEABASS_EMAIL: 'desk@7h.test',
     PLANT_AUTO_FORWARD: 'true',
     PUBLIC_BASE_URL: 'https://example.test',
   },
@@ -234,6 +237,58 @@ try {
     'per-plant order address listed',
   );
   check(Boolean(auto.whatsappTemplate?.body), 'WhatsApp template sample exposed for setup');
+
+  /* --------------------------- a plant that shares the desk inbox ---- */
+  section('A plant routed to the desk inbox gets one copy, not two');
+  received.length = 0;
+  const shared = await json('/api/orders', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      client: {
+        name: 'Shared Inbox Check',
+        email: 'boutique@example.test',
+        phone: '+256768261003',
+        deliveryType: 'uganda',
+        deliveryAddress: 'Plot 21, Ntinda Road, Kampala',
+        deliveryCity: 'Kampala',
+        country: 'Uganda',
+      },
+      configuration: { quantity: 50, vinylTypeId: 'lp_standard', sleeveId: 'standard' },
+      payment: { method: 'mtn_momo' },
+      audioLink: 'https://example.test/master.wav',
+      artworkLink: 'https://example.test/cover.pdf',
+      termsAccepted: true,
+      plantPreference: 'seabass',
+    }),
+  });
+  check(shared.res.status === 201, '50-unit Seabass order created', `status ${shared.res.status}`);
+  check(shared.body.order?.plantPreference === 'seabass', 'order keeps the Seabass plant');
+
+  await json(`/api/admin/orders/${shared.body.order.id}/payment`, {
+    method: 'POST',
+    ...auth,
+    body: JSON.stringify({}),
+  });
+  const sharedMail = received
+    .filter((entry) => entry.path === '/resend')
+    .filter((entry) => /Production request/.test(String(entry.body?.subject ?? '')));
+  check(sharedMail.length === 1, 'exactly one production request for the shared inbox', `${sharedMail.length}`);
+  check(
+    (sharedMail[0]?.body?.bcc ?? []).length === 0,
+    'no BCC back to the same mailbox',
+    JSON.stringify(sharedMail[0]?.body?.bcc),
+  );
+  check(
+    String(sharedMail[0]?.body?.subject ?? '').includes('Seabass'),
+    'subject names the plant so one inbox can triage',
+    String(sharedMail[0]?.body?.subject).slice(0, 80),
+  );
+  const autoShared = (await json('/api/admin/overview', auth)).body.automation ?? {};
+  check(
+    (autoShared.plants ?? []).find((plant) => plant.id === 'seabass')?.aliasesDesk === true,
+    'console flags the plant inbox as a desk forwarder',
+  );
 
   /* --------------------------------------- retry re-sends a failure ---- */
   section('A failed hand-off can be retried from the console');

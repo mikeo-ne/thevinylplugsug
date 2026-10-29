@@ -366,6 +366,8 @@ export async function deliverNotification(channel, order) {
  * inbox. Requires RESEND_API_KEY and the plant's order address
  * (`PLANT_MOBINEKO_EMAIL` / `PLANT_GREENLAKES_EMAIL`, or `PLANT_ORDERS_EMAIL` as a
  * catch-all). File links are absolute so the plant can download masters directly.
+ * If a plant's order inbox is a desk forwarder, the desk BCC is skipped so the
+ * same mailbox does not receive two copies.
  */
 export async function emailPlantOrder(order, plant, plantId) {
   const apiKey = process.env.RESEND_API_KEY;
@@ -375,7 +377,7 @@ export async function emailPlantOrder(order, plant, plantId) {
     return {
       status: 'simulated',
       mode: 'simulated',
-      error: `No order address for ${plant?.name ?? plantId} — set PLANT_MOBINEKO_EMAIL / PLANT_GREENLAKES_EMAIL`,
+      error: `No order address for ${plant?.name ?? plantId} — set its PLANT_*_EMAIL variable`,
     };
   }
 
@@ -448,9 +450,15 @@ export async function emailPlantOrder(order, plant, plantId) {
       {
         from: config.emailFrom,
         to: [to],
-        // Keep a copy on the desk inbox so a plant reply can never go unnoticed.
-        bcc: config.emailTo.split(',').map((address) => address.trim()).filter(Boolean),
-        subject: `Production request ${order.id} — ${order.client.name} — ${describe.quantity} × ${describe.vinyl}`,
+        // Keep a copy on the desk inbox so a plant reply can never go unnoticed —
+        // but never BCC an address the mail is already going to (plants whose
+        // order inbox is still a desk forwarder), or the desk gets it twice.
+        bcc: config.emailTo
+          .split(',')
+          .map((address) => address.trim())
+          .filter(Boolean)
+          .filter((address) => address.toLowerCase() !== String(to).toLowerCase()),
+        subject: `Production request ${order.id} — ${plant?.name ?? plantId} — ${order.client.name} — ${describe.quantity} × ${describe.vinyl}`,
         text,
         html,
         reply_to: COMPANY.email,

@@ -241,8 +241,12 @@ export function AdminPage() {
               ok={Boolean(overview.automation.plantEmail) && overview.automation.autoForward}
               detail={
                 overview.automation.plantEmail
-                  ? `Auto-emailed ${overview.automation.autoForward ? 'on deposit' : '(auto-forward off)'}`
-                  : 'Set PLANT_MOBINEKO_EMAIL + RESEND_API_KEY'
+                  ? `Auto-emailed ${overview.automation.autoForward ? 'on deposit' : '(auto-forward off)'}${
+                      (overview.automation.plants ?? []).some((plant) => plant.aliasesDesk)
+                        ? ' · some plants route to the desk inbox'
+                        : ''
+                    }`
+                  : 'Set the PLANT_*_EMAIL variables + RESEND_API_KEY'
               }
             />
             <PipelineChip
