@@ -7,10 +7,13 @@ import {
   channelStatus,
   deliverNotification,
   deliverPlantPayload,
+  deliverShopNotification,
   emailPlantOrder,
+  emailShopReceipt,
   notificationConfig,
   whatsappTemplateSample,
 } from './notifications.js';
+import { describeShopOrder } from '../shared/shop.js';
 
 const CHANNELS = {
   slack: { label: 'Slack', icon: 'hash', delay: 900, autoDeliver: true },
@@ -258,6 +261,86 @@ export async function emitOrderEvents(order) {
 
   await Promise.allSettled(deliveries);
   return events;
+}
+
+/**
+ * Fan purchase → the desk hears about it immediately, and the buyer gets a receipt.
+ *
+ * Same contract as emitOrderEvents(): configured channels really deliver, the
+ * rest are simulated and reconciled from timestamps, so nothing pretends to have
+ * been sent. The buyer's receipt is recorded as its own event so the console can
+ * show whether it actually left.
+ */
+export async function emitShopOrderEvents(order) {
+  const summary = describeShopOrder(order);
+
+  const events = [
+    makeEvent({
+      orderId: order.id,
+      channel: 'slack',
+      target: '#7h-shop (Slack)',
+      message: `New shop order ${summary}`,
+      payload: { orderId: order.id, totalUsd: order.total, buyer: order.buyer.name, retail: true },
+    }),
+    makeEvent({
+      orderId: order.id,
+      channel: 'email',
+      target: `${COMPANY.email} · operations desk`,
+      message: `Shop order sheet emailed for ${summary}`,
+    }),
+    makeEvent({
+      orderId: order.id,
+      channel: 'whatsapp',
+      target: `${COMPANY.phone} (Management)`,
+      message: `WhatsApp alert queued — ${order.id} needs payment confirmed before packing.`,
+    }),
+    makeEvent({
+      orderId: order.id,
+      channel: 'email',
+      target: order.buyer.email,
+      message: `Receipt queued for the buyer (${order.buyer.email}).`,
+      payload: { orderId: order.id, receipt: true },
+    }),
+  ];
+
+  const fanOutStart = Date.now();
+  events.forEach((event, index) => {
+    event.createdAt = new Date(fanOutStart + index * 60).toISOString();
+    event.payload = event.payload ?? { orderId: order.id };
+    pushEvent(event);
+  });
+
+  const deliveries = events
+    .filter((event) => getChannelMeta(event.channel).autoDeliver)
+    .map(async (event) => {
+      if (event.payload?.receipt) {
+        const result = await emailShopReceipt(order);
+        return applyDelivery(event.id, result);
+      }
+      if (event.mode === 'live') {
+        const result = await deliverShopNotification(event.channel, order);
+        return applyDelivery(event.id, result);
+      }
+      scheduleDelivery(event.id);
+      return event;
+    });
+
+  await Promise.allSettled(deliveries);
+  return events;
+}
+
+/** One line on the console when a shop order moves — packed, shipped, cancelled. */
+export function pushShopStatusEvent(order, note) {
+  const event = makeEvent({
+    orderId: order.id,
+    channel: 'slack',
+    target: 'Shop · operations',
+    message: `Shop order ${order.id} — ${note}`,
+    status: 'delivered',
+    payload: { orderId: order.id, retail: true, status: order.status },
+  });
+  pushEvent(event);
+  return event;
 }
 
 /**

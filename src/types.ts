@@ -306,3 +306,121 @@ export interface AdminOverview {
     }[];
   };
 }
+
+/* ------------------------------------------------------------------ *
+ * Shop — records sold to fans
+ * ------------------------------------------------------------------ */
+
+export interface ShopRelease {
+  id: string;
+  title: string;
+  /** Catalogue code printed on the sleeve, e.g. 7H-041. */
+  release: string;
+  formatId: string;
+  /** Human-readable press spec, e.g. 12" LP · 33⅓ rpm. */
+  format: string;
+  weight: string;
+  colour: string;
+  /** Jacket id from the pressing catalogue, so the shop can render the real mockup. */
+  sleeveId: string;
+  sleeve: string;
+  priceUsd: number;
+  stock: number;
+  soldOut: boolean;
+  lowStock: boolean;
+  maxPerOrder: number;
+  image: string;
+  note: string;
+}
+
+export interface ShopDeliveryOption {
+  id: string;
+  name: string;
+  detail: string;
+  eta: string;
+  priceUsd: number;
+  zone: 'uganda' | 'international';
+  requiresAddress: boolean;
+}
+
+export interface ShopConfig {
+  releases: ShopRelease[];
+  delivery: ShopDeliveryOption[];
+  paymentMethods: PaymentMethod[];
+  fxRate: number;
+  limits: { maxPerRelease: number };
+  company: CompanyConfig['company'];
+}
+
+export interface ShopOrderItem {
+  releaseId: string;
+  title: string;
+  release: string;
+  image: string;
+  priceUsd: number;
+  quantity: number;
+  lineTotal: number;
+}
+
+export interface ShopOrder {
+  id: string;
+  createdAt: string;
+  status: 'placed' | 'packed' | 'shipped' | 'delivered' | 'cancelled';
+  buyer: { name: string; email: string; phone: string };
+  items: ShopOrderItem[];
+  records: number;
+  subtotal: number;
+  shipping: number;
+  total: number;
+  totals: {
+    subtotal: MoneyPair;
+    shipping: MoneyPair;
+    total: MoneyPair;
+  };
+  delivery: ShopDeliveryOption & {
+    address: string | null;
+    city: string;
+    country: string;
+  };
+  payment: {
+    method: PaymentMethod['id'];
+    methodName: string;
+    status: 'pending' | 'paid';
+    reference: string | null;
+    accountName: string | null;
+    accountNumber: string | null;
+  };
+  statusHistory: { status: string; at: string; by: string; note: string }[];
+  notes: string;
+}
+
+/** A shop order as the admin console holds it (adds internals the fan never sees). */
+export interface AdminShopOrder extends Omit<ShopOrder, 'payment' | 'notes'> {
+  payment: ShopOrder['payment'] & { payerPhone?: string; paidAt?: string };
+  buyer: ShopOrder['buyer'] & { notes?: string };
+  channel?: string;
+  restockedAt?: string;
+}
+
+export interface AdminShop {
+  summary: {
+    orders: number;
+    open: number;
+    awaitingPayment: number;
+    paidOrders: number;
+    revenueUsd: number;
+    recordsSold: number;
+    unitsLeft: number;
+  };
+  orders: AdminShopOrder[];
+  stock: {
+    releaseId: string;
+    title: string;
+    release: string;
+    priceUsd: number;
+    image: string;
+    stock: number;
+    sold: number;
+    lowStock: boolean;
+  }[];
+}

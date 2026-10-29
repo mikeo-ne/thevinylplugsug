@@ -1,4 +1,14 @@
-import type { AdminOverview, CompanyConfig, Order, UploadedFile, WebhookEvent } from '../types';
+import type {
+  AdminOverview,
+  AdminShop,
+  AdminShopOrder,
+  CompanyConfig,
+  Order,
+  ShopConfig,
+  ShopOrder,
+  UploadedFile,
+  WebhookEvent,
+} from '../types';
 
 const TOKEN_KEY = '7h-admin-token';
 
@@ -112,4 +122,31 @@ export const api = {
   adminTestEvent: () => request<{ event: WebhookEvent }>('/api/admin/events/test', { method: 'POST' }),
 
   adminReset: () => request<{ ok: boolean }>('/api/admin/reset-demo', { method: 'POST' }),
+
+  /* ------------------------------- shop ------------------------------- */
+
+  shop: () => request<ShopConfig>('/api/shop'),
+
+  createShopOrder: (body: unknown) =>
+    request<{ order: ShopOrder; summary: string; stock: { id: string; stock: number; soldOut: boolean }[] }>(
+      '/api/shop/orders',
+      { method: 'POST', body: JSON.stringify(body) },
+    ),
+
+  getShopOrder: (id: string) =>
+    request<{ order: ShopOrder }>(`/api/shop/orders/${encodeURIComponent(id)}`),
+
+  adminShop: () => request<AdminShop>('/api/admin/shop'),
+
+  adminUpdateShopOrder: (id: string, body: { status?: string; paymentStatus?: string; note?: string }) =>
+    request<{ order: AdminShopOrder }>(`/api/admin/shop/orders/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+
+  adminSetStock: (releaseId: string, stock: number) =>
+    request<{ releaseId: string; stock: number }>(
+      `/api/admin/shop/stock/${encodeURIComponent(releaseId)}`,
+      { method: 'PATCH', body: JSON.stringify({ stock }) },
+    ),
 };

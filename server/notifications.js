@@ -9,6 +9,7 @@
  */
 import { COMPANY, PAYMENT_METHODS } from './config.js';
 import { describeConfiguration, PRESSING_PLANTS } from '../shared/pricing.js';
+import { describeShopOrder } from '../shared/shop.js';
 
 const REQUEST_TIMEOUT = 8000;
 
@@ -506,6 +507,280 @@ export async function deliverPlantPayload(order, plantId) {
       error: null,
       deliveredAt: new Date().toISOString(),
     };
+  } catch (error) {
+    return {
+      status: 'failed',
+      mode: 'live',
+      httpStatus: null,
+      error: error?.name === 'AbortError' ? 'Request timed out' : error.message,
+    };
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * Record shop — fan orders
+ * ------------------------------------------------------------------ */
+
+const shopMoney = (value) => `$${Number(value ?? 0).toFixed(2)}`;
+const ugxText = (value) =>
+  `UGX ${new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(Math.round(Number(value ?? 0)))}`;
+
+/** Plain-text + HTML order sheet for a fan purchase, used by every desk channel. */
+export function buildShopNotification(order) {
+  const summary = describeShopOrder(order);
+  const items = order.items
+    .map((item) => `   ${item.quantity} × ${item.title} (${item.release}) — ${shopMoney(item.lineTotal)}`)
+    .join('\n');
+
+  const text = [
+    `7H MUSIC GROUP — NEW SHOP ORDER`,
+    ``,
+    `Order:      ${order.id}`,
+    `Buyer:      ${order.buyer.name}`,
+    `Contact:    ${order.buyer.email} / ${order.buyer.phone}`,
+    `Placed:     ${new Date(order.createdAt).toUTCString()}`,
+    ``,
+    `Records:`,
+    items,
+    ``,
+    `Subtotal:   ${shopMoney(order.subtotal)}`,
+    `Delivery:   ${order.delivery.name} — ${shopMoney(order.shipping)}`,
+    `Total:      ${shopMoney(order.total)} (${ugxText(order.totals.total.ugx)})`,
+    `Payment:    ${paymentLabel(order.payment.method)} (${order.payment.status})`,
+    order.delivery.requiresAddress
+      ? `Ship to:    ${order.delivery.address}, ${order.delivery.city}, ${order.delivery.country}`
+      : `Ship to:    Pick up at the Kampala studio`,
+    order.buyer.notes ? `Notes:      ${order.buyer.notes}` : null,
+    ``,
+    `Pack it:    ${process.env.PUBLIC_BASE_URL ?? 'https://thevinylplugsug.vercel.app'}/admin`,
+  ]
+    .filter((line) => line !== null)
+    .join('\n');
+
+  const row = (label, value) =>
+    `<tr><td style="padding:6px 12px 6px 0;color:#8a8a82;font-size:12px;white-space:nowrap">${label}</td><td style="padding:6px 0;color:#121212;font-size:13px;font-weight:500">${value}</td></tr>`;
+
+  const html = `
+  <div style="font-family:Inter,Helvetica,Arial,sans-serif;background:#f6f6f2;padding:24px">
+    <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #e6e6df">
+      <div style="background:#121212;padding:20px 24px">
+        <div style="color:#CCFF00;font-size:11px;letter-spacing:2px;text-transform:uppercase">7H Music Group</div>
+        <div style="color:#ffffff;font-size:19px;font-weight:600;margin-top:6px">Shop order — ${order.id}</div>
+        <div style="color:#a8a8a0;font-size:12px;margin-top:4px">${order.records} record${order.records === 1 ? '' : 's'} · ${shopMoney(order.total)}</div>
+      </div>
+      <div style="padding:20px 24px">
+        <table style="border-collapse:collapse;width:100%">
+          ${row('Buyer', order.buyer.name)}
+          ${row('Email', `<a href="mailto:${order.buyer.email}" style="color:#0a7a3d">${order.buyer.email}</a>`)}
+          ${row('WhatsApp', `<a href="https://wa.me/${order.buyer.phone.replace(/[^0-9]/g, '')}" style="color:#0a7a3d">${order.buyer.phone}</a>`)}
+          ${order.items
+            .map((item) => row(`${item.quantity} × ${item.title}`, `${item.release} · ${shopMoney(item.lineTotal)}`))
+            .join('')}
+          ${row('Delivery', `${order.delivery.name} · ${shopMoney(order.shipping)}`)}
+          ${order.delivery.requiresAddress ? row('Address', `${order.delivery.address}, ${order.delivery.city}, ${order.delivery.country}`) : ''}
+          ${row('Total', `<strong>${shopMoney(order.total)}</strong> · ${ugxText(order.totals.total.ugx)}`)}
+          ${row('Payment', `${paymentLabel(order.payment.method)} · ${order.payment.status}`)}
+          ${order.buyer.notes ? row('Notes', order.buyer.notes) : ''}
+        </table>
+        <a href="${process.env.PUBLIC_BASE_URL ?? 'https://thevinylplugsug.vercel.app'}/admin"
+           style="display:inline-block;margin-top:18px;background:#CCFF00;color:#121212;text-decoration:none;padding:11px 20px;border-radius:999px;font-size:13px;font-weight:600">
+          Open the shop console
+        </a>
+      </div>
+    </div>
+  </div>`;
+
+  return { summary, text, html };
+}
+
+/** The buyer's own copy: what they bought, what they owe, how to pay it. */
+export function buildShopReceipt(order) {
+  const method = PAYMENT_METHODS.find((entry) => entry.id === order.payment.method);
+  const base = process.env.PUBLIC_BASE_URL ?? 'https://thevinylplugsug.vercel.app';
+  const lines = order.items
+    .map((item) => `   ${item.quantity} × ${item.title} (${item.release}) — ${shopMoney(item.lineTotal)}`)
+    .join('\n');
+
+  const payLine =
+    order.payment.method === 'card_bank'
+      ? `Pay ${shopMoney(order.total)} by card or SWIFT — reply to this email and we send the invoice with bank details.`
+      : `Send ${ugxText(order.totals.total.ugx)} (${shopMoney(order.total)}) to ${method?.accountName ?? '7H MUSIC GROUP'} ${method?.accountNumber ?? ''} on ${method?.name ?? 'mobile money'}, quoting ${order.id}.`;
+
+  const text = [
+    `7H MUSIC GROUP — THANK YOU FOR YOUR ORDER`,
+    ``,
+    `Order:    ${order.id}`,
+    ``,
+    lines,
+    ``,
+    `Subtotal: ${shopMoney(order.subtotal)}`,
+    `Delivery: ${order.delivery.name} — ${shopMoney(order.shipping)}`,
+    `Total:    ${shopMoney(order.total)} (${ugxText(order.totals.total.ugx)})`,
+    ``,
+    payLine,
+    ``,
+    `Delivery: ${order.delivery.name} · ${order.delivery.eta}`,
+    order.delivery.requiresAddress
+      ? `Address:  ${order.delivery.address}, ${order.delivery.city}, ${order.delivery.country}`
+      : `Pick up:  Ntinda studio, Mon–Sat 09:00–19:00 (quote ${order.id})`,
+    ``,
+    `Track it any time: ${base}/shop/order/${order.id}`,
+    `Questions? WhatsApp ${COMPANY.phone} — we answer within business hours.`,
+  ].join('\n');
+
+  const row = (label, value) =>
+    `<tr><td style="padding:5px 12px 5px 0;color:#8a8a82;font-size:12px">${label}</td><td style="padding:5px 0;color:#121212;font-size:13px">${value}</td></tr>`;
+
+  const html = `
+  <div style="font-family:Inter,Helvetica,Arial,sans-serif;background:#f6f6f2;padding:24px">
+    <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #e6e6df">
+      <div style="background:#121212;padding:20px 24px">
+        <div style="color:#CCFF00;font-size:11px;letter-spacing:2px;text-transform:uppercase">7H Music Group</div>
+        <div style="color:#ffffff;font-size:19px;font-weight:600;margin-top:6px">Order ${order.id} received</div>
+      </div>
+      <div style="padding:20px 24px">
+        <table style="border-collapse:collapse;width:100%">
+          ${order.items.map((item) => row(`${item.quantity} × ${item.title}`, `${item.release} · ${shopMoney(item.lineTotal)}`)).join('')}
+          ${row('Delivery', `${order.delivery.name} · ${shopMoney(order.shipping)}`)}
+          ${row('Total', `<strong>${shopMoney(order.total)}</strong> · ${ugxText(order.totals.total.ugx)}`)}
+        </table>
+        <p style="margin:16px 0 0;color:#121212;font-size:13px;line-height:1.6">${payLine}</p>
+        <p style="margin:10px 0 0;color:#6b6b63;font-size:12px;line-height:1.6">${order.delivery.eta}${order.delivery.requiresAddress ? ` · ${order.delivery.address}, ${order.delivery.city}` : ' · Ntinda studio pickup'}</p>
+        <a href="${base}/shop/order/${order.id}" style="display:inline-block;margin-top:18px;background:#CCFF00;color:#121212;text-decoration:none;padding:11px 20px;border-radius:999px;font-size:13px;font-weight:600">View your order</a>
+      </div>
+    </div>
+  </div>`;
+
+  return { text, html };
+}
+
+async function deliverShopSlack(order) {
+  const url = process.env.SLACK_WEBHOOK_URL;
+  if (!url) throw new Error('SLACK_WEBHOOK_URL is not set');
+  const { summary, text } = buildShopNotification(order);
+  return postJson(url, {
+    text: `New shop order ${summary}`,
+    blocks: [
+      { type: 'header', text: { type: 'plain_text', text: `New shop order · ${order.id}` } },
+      {
+        type: 'section',
+        fields: [
+          { type: 'mrkdwn', text: `*Buyer*\n${order.buyer.name}` },
+          { type: 'mrkdwn', text: `*Total*\n${shopMoney(order.total)}` },
+          { type: 'mrkdwn', text: `*Records*\n${order.items.map((item) => `${item.quantity} × ${item.title}`).join('\n')}` },
+          { type: 'mrkdwn', text: `*Delivery*\n${order.delivery.name}` },
+        ],
+      },
+      { type: 'divider' },
+      { type: 'section', text: { type: 'mrkdwn', text: '```' + text.slice(0, 2800) + '```' } },
+    ],
+  });
+}
+
+async function deliverShopEmail(order) {
+  const config = notificationConfig();
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) throw new Error('RESEND_API_KEY is not set');
+  const { summary, text, html } = buildShopNotification(order);
+  return postJson(
+    RESEND_URL,
+    {
+      from: config.emailFrom,
+      to: config.emailTo.split(',').map((address) => address.trim()).filter(Boolean),
+      subject: `Shop order ${order.id} — ${summary.replace(`${order.id} · `, '')}`,
+      text,
+      html,
+      reply_to: order.buyer.email,
+    },
+    { authorization: `Bearer ${apiKey}` },
+  );
+}
+
+async function deliverShopWhatsApp(order) {
+  const config = notificationConfig();
+  if (!process.env.WHATSAPP_TOKEN || !process.env.WHATSAPP_PHONE_ID) {
+    throw new Error('WHATSAPP_TOKEN / WHATSAPP_PHONE_ID is not set');
+  }
+  const summary = describeShopOrder(order);
+  return postJson(
+    `${WHATSAPP_GRAPH_URL}/${process.env.WHATSAPP_PHONE_ID}/messages`,
+    {
+      messaging_product: 'whatsapp',
+      to: config.whatsappTo,
+      type: 'text',
+      text: { preview_url: false, body: `New shop order: ${summary}\n${order.delivery.name} · ${order.buyer.name} · ${order.buyer.phone}` },
+    },
+    { authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` },
+  );
+}
+
+async function deliverShopGenericWebhook(order, channel) {
+  const url = process.env.NOTIFY_WEBHOOK_URL;
+  if (!url) throw new Error('NOTIFY_WEBHOOK_URL is not set');
+  const { summary, text } = buildShopNotification(order);
+  return postJson(url, {
+    event: 'shop.order.placed',
+    channel,
+    orderId: order.id,
+    summary,
+    total: order.total,
+    currency: 'USD',
+    buyer: { name: order.buyer.name, email: order.buyer.email, phone: order.buyer.phone },
+    items: order.items,
+    delivery: order.delivery,
+    text,
+  });
+}
+
+/** Same contract as deliverNotification(), for retail orders. */
+export async function deliverShopNotification(channel, order) {
+  const config = notificationConfig();
+  try {
+    let result;
+    if (channel === 'slack' && config.slack) result = await deliverShopSlack(order);
+    else if (channel === 'email' && config.email) result = await deliverShopEmail(order);
+    else if (channel === 'whatsapp' && config.whatsapp) result = await deliverShopWhatsApp(order);
+    else if (config.webhook) result = await deliverShopGenericWebhook(order, channel);
+    else return { status: 'simulated', mode: 'simulated', error: null };
+
+    return {
+      status: 'delivered',
+      mode: 'live',
+      httpStatus: result.httpStatus,
+      error: null,
+      deliveredAt: new Date().toISOString(),
+    };
+  } catch (error) {
+    return {
+      status: 'failed',
+      mode: 'live',
+      httpStatus: null,
+      error: error?.name === 'AbortError' ? 'Request timed out' : error.message,
+    };
+  }
+}
+
+/** Email the buyer their own receipt. Never throws — a sale must not fail on mail. */
+export async function emailShopReceipt(order) {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) return { status: 'simulated', mode: 'simulated', error: 'RESEND_API_KEY is not set' };
+  const config = notificationConfig();
+  const { text, html } = buildShopReceipt(order);
+  try {
+    const result = await postJson(
+      RESEND_URL,
+      {
+        from: config.emailFrom,
+        to: [order.buyer.email],
+        bcc: config.emailTo.split(',').map((address) => address.trim()).filter(Boolean),
+        subject: `Your 7H order ${order.id} — ${order.records} record${order.records === 1 ? '' : 's'}`,
+        text,
+        html,
+        reply_to: COMPANY.email,
+      },
+      { authorization: `Bearer ${apiKey}` },
+    );
+    return { status: 'delivered', mode: 'live', httpStatus: result.httpStatus, error: null };
   } catch (error) {
     return {
       status: 'failed',

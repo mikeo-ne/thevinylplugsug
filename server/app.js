@@ -32,6 +32,15 @@ import {
   SESSION_TTL,
 } from './config.js';
 import { issueToken, requireAdmin } from './auth.js';
+import {
+  adminShopOverview,
+  findShopOrder,
+  placeShopOrder,
+  setReleaseStock,
+  shopConfig,
+  shopOrderView,
+  updateShopOrder,
+} from './shop.js';
 import { notificationConfig } from './notifications.js';
 import { db_, ensureDirs, newOrderId, newId, UPLOAD_DIR } from './store.js';
 import {
@@ -452,6 +461,61 @@ api.get('/api/orders/:id', (req, res) => {
 });
 
 /* ------------------------------------------------------------------ *
+ * Shop — records sold to fans
+ * ------------------------------------------------------------------ */
+
+// A fan tapping "Place order" twice — or retrying after a failed prompt — is the
+// common case, not abuse, so the ceiling is generous. Override it for load tests.
+const SHOP_ORDERS_PER_MINUTE = Math.max(1, Number(process.env.SHOP_ORDERS_PER_MINUTE ?? 12));
+const shopRate = new Map();
+function shopRateLimited(ip) {
+  const now = Date.now();
+  const window = 60_000;
+  const hits = (shopRate.get(ip) ?? []).filter((t) => now - t < window);
+  hits.push(now);
+  shopRate.set(ip, hits);
+  return hits.length > SHOP_ORDERS_PER_MINUTE;
+}
+
+api.get('/api/shop', (_req, res) => {
+  res.json(shopConfig());
+});
+
+api.post('/api/shop/orders', async (req, res) => {
+  const ip = req.ip ?? 'unknown';
+  if (shopRateLimited(ip)) {
+    return res.status(429).json({ error: 'That is a lot of orders — give it a minute and try again.' });
+  }
+
+  const result = await placeShopOrder({
+    ...(req.body ?? {}),
+    userAgent: req.headers['user-agent'],
+  });
+  return res.status(result.status).json(result.body);
+});
+
+// Reference lookups are the only public read of an order, so they are rate
+// limited: six characters is a billion combinations, but a wall costs nothing.
+const shopLookup = new Map();
+function shopLookupLimited(ip) {
+  const now = Date.now();
+  const window = 60_000;
+  const hits = (shopLookup.get(ip) ?? []).filter((t) => now - t < window);
+  hits.push(now);
+  shopLookup.set(ip, hits);
+  return hits.length > 30;
+}
+
+api.get('/api/shop/orders/:id', (req, res) => {
+  if (shopLookupLimited(req.ip ?? 'unknown')) {
+    return res.status(429).json({ error: 'Too many lookups — wait a minute and try again.' });
+  }
+  const order = findShopOrder(req.params.id);
+  if (!order) return res.status(404).json({ error: 'Order not found. Check the reference on your receipt.' });
+  res.json({ order: shopOrderView(order) });
+});
+
+/* ------------------------------------------------------------------ *
  * Admin
  * ------------------------------------------------------------------ */
 
@@ -653,6 +717,22 @@ api.post('/api/admin/events/test', requireAdmin, async (_req, res) => {
 api.post('/api/admin/reset-demo', requireAdmin, (_req, res) => {
   db_.reset();
   res.json({ ok: true });
+});
+
+/* ---------------------------- shop console ---------------------------- */
+
+api.get('/api/admin/shop', requireAdmin, (_req, res) => {
+  res.json(adminShopOverview());
+});
+
+api.patch('/api/admin/shop/orders/:id', requireAdmin, (req, res) => {
+  const result = updateShopOrder(req.params.id, req.body ?? {});
+  res.status(result.status).json(result.body);
+});
+
+api.patch('/api/admin/shop/stock/:releaseId', requireAdmin, (req, res) => {
+  const result = setReleaseStock(req.params.releaseId, req.body?.stock);
+  res.status(result.status).json(result.body);
 });
 
 api.get('/api/admin/orders/:id/payload', requireAdmin, (req, res) => {

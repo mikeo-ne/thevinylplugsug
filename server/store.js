@@ -25,6 +25,9 @@ const emptyDb = () => ({
   orders: [],
   events: [],
   uploads: [],
+  // The retail shop: live stock counts plus fan orders. Kept apart from the
+  // production orders so neither pipeline can ever be confused for the other.
+  shop: { stock: {}, orders: [] },
 });
 
 let db = null;
@@ -222,6 +225,10 @@ function load() {
     if (fs.existsSync(DB_FILE)) {
       const parsed = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
       db = { ...emptyDb(), ...parsed };
+      // A store written before the shop existed still opens cleanly.
+      if (!db.shop || typeof db.shop !== 'object') db.shop = { stock: {}, orders: [] };
+      if (!Array.isArray(db.shop.orders)) db.shop.orders = [];
+      if (!db.shop.stock || typeof db.shop.stock !== 'object') db.shop.stock = {};
       return db;
     }
   } catch (error) {
@@ -261,6 +268,25 @@ export const db_ = {
 
 export function newId(prefix) {
   return `${prefix}_${crypto.randomBytes(8).toString('hex')}`;
+}
+
+/**
+ * Readable reference a fan can quote on WhatsApp: 7H-SHOP-XXXXXX.
+ *
+ * Six characters from a 32-symbol alphabet is ~1.07 billion combinations — long
+ * enough that the public order page cannot be walked by guessing. Kept distinct
+ * from production orders (7H-YYYY-XXXX) on purpose.
+ */
+export function newShopOrderId(existing = []) {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    let tail = '';
+    const bytes = crypto.randomBytes(6);
+    for (let i = 0; i < 6; i += 1) tail += alphabet[bytes[i] % alphabet.length];
+    const candidate = `7H-SHOP-${tail}`;
+    if (!existing.some((order) => order.id === candidate)) return candidate;
+  }
+  return `7H-SHOP-${Date.now().toString(36).toUpperCase().slice(-6)}`;
 }
 
 /** Human-readable, plant-facing order reference: 7H-YYYY-XXXX */
