@@ -237,7 +237,11 @@ async function boot() {
   if (stored) {
     db = stored;
   } else {
-    db = seedDemo(emptyDb());
+    // A real database starts empty — fake sample orders have no place in a shop
+    // that is taking money. The file store still seeds the demo so the app has
+    // something to show on a laptop, and SEED_DEMO=true forces it anywhere.
+    const wantsDemo = !driver.persistent || process.env.SEED_DEMO === 'true';
+    db = wantsDemo ? seedDemo(emptyDb()) : emptyDoc();
     await driver.save(null, db);
   }
   lastSaved = clone(db);

@@ -355,6 +355,8 @@ async function testFileAndSelection() {
   const fallback = createDriver({ env: {}, file: path.join(dir, 'db.json'), dataDir: dir });
   check('no database configured falls back to a file', fallback.name === 'file');
 
+  // A real database must start empty, not with demo rows.
+  const { fileDriver: _f } = await import('../server/db/file.js');
   const described = describeDrivers({ DATABASE_URL: 'postgres://x' });
   check('describeDrivers advertises what is configured', described.postgres.configured === true);
   check('the schema is exported for migrations', POSTGRES_SCHEMA.includes('create table if not exists shop_stock'));

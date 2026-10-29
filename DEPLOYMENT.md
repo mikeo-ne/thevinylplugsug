@@ -242,6 +242,10 @@ DATABASE_URL='postgres://…' npm run db:migrate -- --import data/db.json   # br
 The schema is created idempotently — `pressing_orders`, `shop_orders`, `uploads`, `alert_events`,
 `shop_stock`, `store_meta` — so no separate migration tool is required.
 
+**A fresh database starts empty.** The two sample pressing orders only exist in the local file store
+(a laptop demo, or `SEED_DEMO=true`); a real database boots with the catalogue's opening stock and
+nothing else. Use the console's *Reset demo* if you ever want the samples back.
+
 **Rather use Redis?** Vercel KV and Upstash both work: add `KV_REST_API_URL` + `KV_REST_API_TOKEN`
 (the names Upstash uses, `UPSTASH_REDIS_REST_URL` / `…_TOKEN`, also work) and the app switches to the
 Redis driver. Postgres is the better default: it is the one that can enforce "don't oversell" with a
