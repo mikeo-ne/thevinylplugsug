@@ -24,7 +24,14 @@ const step = (label) => console.log(`\n▸ ${label}`);
 
 const get = async (path, init = {}) => {
   const started = Date.now();
-  const res = await fetch(`${BASE}${path}`, init);
+  let res;
+  try {
+    res = await fetch(`${BASE}${path}`, init);
+  } catch (error) {
+    console.error(`\nCannot reach ${BASE}${path}\n${error.cause?.code ?? error.message}`);
+    console.error('Check the URL, your connection, or any VPN/firewall blocking the sandbox.\n');
+    process.exit(1);
+  }
   const ms = Date.now() - started;
   return { res, ms };
 };
