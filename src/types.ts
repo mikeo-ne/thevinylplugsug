@@ -290,7 +290,7 @@ export interface AdminOverview {
   };
   automation?: {
     autoForward: boolean;
-    forwardOnOrder: boolean;
+    depositRequired: boolean;
     plantEmail: boolean;
     plantWebhook: boolean;
     whatsappTemplate?: { name: string; language: string; category: string; body: string; parameters: number };

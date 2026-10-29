@@ -103,6 +103,24 @@ try {
   const tracked = overview.body.orders.find((item) => item.id === orderId);
   check(Boolean(tracked) && tracked.quote.total === 1275, `server quote is authoritative ($${tracked?.quote.total})`);
 
+  // The deposit gates the plant: a cold forward is refused, not silently sent.
+  const gated = await post(
+    `/api/admin/orders/${orderId}/forward`,
+    { plantId: 'greenlakes' },
+    { 'x-admin-token': login.body.token },
+  );
+  check(
+    gated.status === 409 && gated.body.code === 'deposit_required',
+    'forward is refused until the deposit is confirmed',
+    `status ${gated.status}`,
+  );
+
+  await post(
+    `/api/admin/orders/${orderId}/payment`,
+    { amount: tracked?.quote?.deposit },
+    { 'x-admin-token': login.body.token },
+  );
+
   const forwarded = await post(
     `/api/admin/orders/${orderId}/forward`,
     { plantId: 'greenlakes' },

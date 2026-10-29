@@ -371,10 +371,8 @@ api.post('/api/orders', async (req, res) => {
   order.plantPayload = buildPlantPayload(order);
   db_.save();
   await emitOrderEvents(order);
-  if (automationConfig().forwardOnOrder) {
-    // Opt-in: plants that only open a queue once the paperwork lands.
-    await autoForwardOrder(order, { trigger: 'order' });
-  }
+  // No deposit, no plant. The order sits with us until an admin confirms the
+  // 50% deposit, which is what triggers the release (see /payment below).
 
   res.status(201).json({
     order: {
@@ -546,7 +544,8 @@ api.get('/api/admin/overview', requireAdmin, (_req, res) => {
         moq: plant.moq,
         leadTime: plant.leadTime,
         ordersEmail: plant.ordersEmail ?? null,
-        // True while a plant's order inbox is really the desk forwarding inbox.
+        // True if a plant inbox happens to be the desk address, so the console
+        // (and the BCC logic) know not to expect a separate copy.
         aliasesDesk: Boolean(
           plant.ordersEmail &&
             notificationConfig().emailTo
@@ -608,7 +607,16 @@ api.post('/api/admin/orders/:id/forward', requireAdmin, async (req, res) => {
   const plantId = PRESSING_PLANTS.some((plant) => plant.id === req.body?.plantId)
     ? req.body.plantId
     : order.plantPreference ?? 'mobineko';
-  const { order: updated, plant } = await forwardOrderToPlant(order, plantId);
+  // forwardOrderToPlant enforces the gate and records the hold on the console,
+  // so the refusal is both visible and impossible to bypass.
+  const { order: updated, plant, blocked } = await forwardOrderToPlant(order, plantId);
+  if (blocked) {
+    return res.status(409).json({
+      error: 'Confirm the deposit first — suppliers are only contacted once the deposit is paid.',
+      code: 'deposit_required',
+      paymentStatus: order.payment?.status ?? 'pending',
+    });
+  }
   res.json({ order: decorateOrder(updated), plant });
 });
 

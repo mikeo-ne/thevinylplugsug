@@ -193,8 +193,10 @@ The order pipeline runs end to end without anyone creating a factory order by ha
    (addresses, spec sheet, absolute download links for masters and artwork) and BCC'd to the desk.
 3. **Failure** → the console marks the hand-off `failed` with the provider's error and offers retry.
 
-`PLANT_AUTO_FORWARD=false` restores manual release; `PLANT_FORWARD_ON_ORDER=true` releases on
-submission instead of on deposit. Setup, the WhatsApp template wording and every variable:
+The deposit is the gate: suppliers are never contacted before an admin confirms it in `/admin`, and
+a manual *Forward* is refused with `409 deposit_required` until then. `PLANT_AUTO_FORWARD=false`
+just means you press *Forward* yourself once the deposit has cleared. Setup, the WhatsApp template
+wording and every variable:
 [DEPLOYMENT.md → Automation](./DEPLOYMENT.md#automation--order--alerts--plant-no-manual-steps).
 
 ## Notifications
@@ -209,7 +211,7 @@ delivers only when its variables are present; otherwise it stays `simulated` and
 | WhatsApp | `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_ID`, `NOTIFY_WHATSAPP_TO` | Meta Cloud API; recipient must be opted in |
 | Umbrella webhook | `NOTIFY_WEBHOOK_URL` | One JSON POST per channel — Zapier / Make / n8n / your bot |
 | Plant forwarding | `PLANT_WEBHOOK_URL` (+ `PLANT_WEBHOOK_PLANT`, `PUBLIC_BASE_URL`) | Enables the admin “Forward to plant” action |
-| Plant inboxes | `PLANT_MOBINEKO_EMAIL`, `PLANT_GREENLAKES_EMAIL`, `PLANT_SEABASS_EMAIL`, `PLANT_DRDUB_EMAIL`, `PLANT_GZMEDIA_EMAIL`, `PLANT_DEEPGROOVES_EMAIL` | Where each plant's spec sheet is emailed after a deposit. Plants without a rep inbox point at `7hmusicgroupug@gmail.com` until one is assigned; the desk BCC is skipped when the addresses match |
+| Plant inboxes | `PLANT_MOBINEKO_EMAIL`, `PLANT_GREENLAKES_EMAIL`, `PLANT_SEABASS_EMAIL`, `PLANT_DRDUB_EMAIL`, `PLANT_GZMEDIA_EMAIL`, `PLANT_DEEPGROOVES_EMAIL` | Each plant's own rep inbox — where the spec sheet is emailed once the deposit is confirmed. The desk is BCC'd; the BCC is skipped when the addresses match |
 
 Everything is optional — the app runs, and demos cleanly, with none of it set.
 

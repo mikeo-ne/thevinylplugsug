@@ -7,6 +7,7 @@
  * Resend + the WhatsApp Graph API, then walks the exact path a real order takes:
  *
  *   order submitted  → email + WhatsApp alerts fire automatically
+ *   before deposit   → the plant is NOT contacted (gate holds, API returns 409)
  *   deposit confirmed → production request is emailed to the pressing plant
  *   repeat call       → does NOT send a second copy
  *   plant without an address → reported, never silently "delivered"
@@ -77,9 +78,11 @@ const server = spawn(process.execPath, [path.resolve('server/index.js')], {
     NOTIFY_WHATSAPP_TO: '256768261003',
     PLANT_MOBINEKO_EMAIL: 'orders@mobineko.test',
     PLANT_GREENLAKES_EMAIL: 'press@greenlakes.test',
-    // A plant whose order inbox is still a desk forwarder — the live setup
-    // until each rep hands over their real address.
-    PLANT_SEABASS_EMAIL: 'desk@7h.test',
+    // Each plant has its own real rep inbox — no forwarding through the desk.
+    PLANT_SEABASS_EMAIL: 'orders@seabassvinyl.test',
+    PLANT_DRDUB_EMAIL: 'info@drdub.test',
+    PLANT_GZMEDIA_EMAIL: 'gz@gzmedia.test',
+    PLANT_DEEPGROOVES_EMAIL: 'info@deepgrooves.test',
     PLANT_AUTO_FORWARD: 'true',
     PUBLIC_BASE_URL: 'https://example.test',
   },
@@ -169,6 +172,24 @@ try {
   check(params.length === 5, 'template carries 5 parameters', `${params.length}`);
   check(params[0]?.text === orderId, 'parameter 1 is the order id', String(params[0]?.text));
 
+  /* ------------------------------- the deposit is the gate to the plant ---- */
+  section('No deposit → the plant is never contacted');
+  received.length = 0;
+  const blocked = await json(`/api/admin/orders/${orderId}/forward`, {
+    method: 'POST',
+    ...auth,
+    body: JSON.stringify({ plantId: 'mobineko' }),
+  });
+  check(blocked.res.status === 409, 'manual forward refused before the deposit', `status ${blocked.res.status}`);
+  check(blocked.body.code === 'deposit_required', 'refusal names the deposit gate', String(blocked.body.code));
+  check(blocked.body.error === 'Confirm the deposit first — suppliers are only contacted once the deposit is paid.', 'refusal reads clearly');
+  check(received.length === 0, 'nothing left the building', `${received.length} outbound request(s)`);
+  const heldOrder = await json(`/api/orders/${orderId}`);
+  check(heldOrder.body.order?.status !== 'forwarded', 'order is not marked forwarded', String(heldOrder.body.order?.status));
+  const holdEvent = (heldOrder.body.events ?? []).find((event) => event.channel === 'plant');
+  check(holdEvent?.status === 'blocked', 'console shows the hand-off held back', String(holdEvent?.status));
+  check(/deposit/i.test(String(holdEvent?.message ?? '')), 'hold explains why', String(holdEvent?.message).slice(0, 80));
+
   /* ----------------------------------------- deposit → plant release ---- */
   section('Deposit confirmed → production request reaches the plant');
   received.length = 0;
@@ -238,8 +259,8 @@ try {
   );
   check(Boolean(auto.whatsappTemplate?.body), 'WhatsApp template sample exposed for setup');
 
-  /* --------------------------- a plant that shares the desk inbox ---- */
-  section('A plant routed to the desk inbox gets one copy, not two');
+  /* ------------------------------- each plant has its own rep inbox ---- */
+  section('Every plant reaches its own rep, with no desk detour');
   received.length = 0;
   const shared = await json('/api/orders', {
     method: 'POST',
@@ -264,6 +285,9 @@ try {
   });
   check(shared.res.status === 201, '50-unit Seabass order created', `status ${shared.res.status}`);
   check(shared.body.order?.plantPreference === 'seabass', 'order keeps the Seabass plant');
+  const sharedPlant = (await json('/api/admin/overview', auth)).body.plants?.find((plant) => plant.id === 'seabass');
+  check(sharedPlant?.ordersEmail === 'orders@seabassvinyl.test', 'Seabass inbox is the real rep address', String(sharedPlant?.ordersEmail));
+  check(sharedPlant?.aliasesDesk !== true, 'and is no longer a desk forwarder', String(sharedPlant?.aliasesDesk));
 
   await json(`/api/admin/orders/${shared.body.order.id}/payment`, {
     method: 'POST',
@@ -273,10 +297,15 @@ try {
   const sharedMail = received
     .filter((entry) => entry.path === '/resend')
     .filter((entry) => /Production request/.test(String(entry.body?.subject ?? '')));
-  check(sharedMail.length === 1, 'exactly one production request for the shared inbox', `${sharedMail.length}`);
+  check(sharedMail.length === 1, 'exactly one production request per order', `${sharedMail.length}`);
   check(
-    (sharedMail[0]?.body?.bcc ?? []).length === 0,
-    'no BCC back to the same mailbox',
+    (sharedMail[0]?.body?.to ?? []).includes('orders@seabassvinyl.test'),
+    'addressed to the Seabass rep, not the desk',
+    JSON.stringify(sharedMail[0]?.body?.to),
+  );
+  check(
+    (sharedMail[0]?.body?.bcc ?? []).includes('desk@7h.test'),
+    'desk is BCC’d as a record, not addressed as the recipient',
     JSON.stringify(sharedMail[0]?.body?.bcc),
   );
   check(
@@ -285,9 +314,10 @@ try {
     String(sharedMail[0]?.body?.subject).slice(0, 80),
   );
   const autoShared = (await json('/api/admin/overview', auth)).body.automation ?? {};
+  check(autoShared.depositRequired === true, 'console reports the deposit gate as enforced');
   check(
-    (autoShared.plants ?? []).find((plant) => plant.id === 'seabass')?.aliasesDesk === true,
-    'console flags the plant inbox as a desk forwarder',
+    (autoShared.plants ?? []).every((plant) => !plant.aliasesDesk),
+    'no plant is routed through the desk inbox',
   );
 
   /* --------------------------------------- retry re-sends a failure ---- */

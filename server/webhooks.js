@@ -33,6 +33,21 @@ export const deliveryLabel = (client) =>
     : `Uganda — ${client.deliveryCity}`;
 
 /** Human-readable payload management forwards to the overseas pressing plant. */
+/**
+ * Has the 50% deposit actually landed and been confirmed in the console?
+ * `payment.status` is set by an admin, and the recorded amount must cover the
+ * deposit on the order's own quote.
+ */
+export function depositConfirmed(order) {
+  const status = order?.payment?.status;
+  if (status !== 'deposit_paid' && status !== 'paid') return false;
+  const required = Number(order?.quote?.deposit ?? 0);
+  const paid = Number(order?.payment?.depositPaidUsd ?? 0);
+  if (!Number.isFinite(required) || required <= 0) return true;
+  if (!Number.isFinite(paid)) return false;
+  return paid + 0.005 >= required;
+}
+
 export function buildPlantPayload(order) {
   const config = describeConfiguration(order.configuration);
   const plant =
@@ -106,17 +121,16 @@ Notes:      ${order.client.notes || '—'}`;
 }
 
 /**
- * Whether the plant hand-off runs on its own. Default ON: the moment a deposit is
- * confirmed the production request is emailed to the plant (and POSTed to
- * PLANT_WEBHOOK_URL if that is wired). Set PLANT_AUTO_FORWARD=false to go back to
- * releasing orders by hand.
+ * Whether the plant hand-off runs on its own once a deposit is confirmed.
  *
- * PLANT_FORWARD_ON_ORDER=true releases the order as soon as it is submitted, for
- * plants that only start the queue once paperwork lands.
+ * The deposit is a hard gate: nothing reaches a plant before an admin has marked
+ * the 50% deposit as paid, and PLANT_AUTO_FORWARD=false only changes *who* pushes
+ * the button, never whether the deposit was paid first.
  */
 export const automationConfig = () => ({
   autoForward: process.env.PLANT_AUTO_FORWARD !== 'false',
-  forwardOnOrder: process.env.PLANT_FORWARD_ON_ORDER === 'true',
+  /** Deposits always gate the plant hand-off — surfaced in the console. */
+  depositRequired: true,
   plantEmail: notificationConfig().plantEmail,
   plantWebhook: Boolean(process.env.PLANT_WEBHOOK_URL),
   whatsappTemplate: whatsappTemplateSample(),
@@ -282,13 +296,40 @@ export function reconcileEvents(now = Date.now()) {
 /**
  * Send the order to the pressing plant.
  *
- * Runs automatically (deposit confirmation, or order submission when
- * PLANT_FORWARD_ON_ORDER is set) and doubles as the manual "Forward" action.
- * Tries the plant's email inbox and its webhook in parallel — whichever is
- * configured — and records one `plant` event with the combined result.
+ * Runs automatically when the deposit is confirmed and doubles as the manual
+ * "Forward" action — but only once the deposit has actually cleared. Tries the
+ * plant's email inbox and its webhook in parallel — whichever is configured —
+ * and records one `plant` event with the combined result.
  */
-export async function forwardOrderToPlant(order, plantId, actor = 'management') {
+export async function forwardOrderToPlant(order, plantId, actor = 'management', { force = false } = {}) {
   const plant = PRESSING_PLANTS.find((item) => item.id === plantId) ?? PRESSING_PLANTS[0];
+
+  // The commercial gate. No deposit, no production request — even for a manual
+  // forward from the console, unless the caller explicitly forces it.
+  if (!force && !depositConfirmed(order)) {
+    const now = new Date().toISOString();
+    order.plantHandoff = {
+      plant: plant.id,
+      at: now,
+      mode: 'blocked',
+      status: 'blocked',
+      by: actor,
+      error: 'Deposit not confirmed',
+    };
+    const db = db_.data;
+    const held = db.events.find(
+      (event) => event.orderId === order.id && event.channel === 'plant' && event.status !== 'delivered',
+    );
+    if (held) {
+      held.status = 'blocked';
+      held.error = 'Deposit not confirmed';
+      held.message = `Held back — the deposit for ${order.id} is not confirmed, so ${plant.name} has not been contacted.`;
+      held.lastAttemptAt = now;
+    }
+    db_.save();
+    return { blocked: true, reason: 'deposit_not_confirmed', plant, order };
+  }
+
   order.plantPreference = plant.id;
   order.plantPayload = buildPlantPayload(order);
 
@@ -391,6 +432,7 @@ export async function forwardOrderToPlant(order, plantId, actor = 'management') 
 export async function autoForwardOrder(order, { trigger = 'deposit' } = {}) {
   const config = automationConfig();
   if (!config.autoForward) return { skipped: true, reason: 'PLANT_AUTO_FORWARD=false' };
+  if (!depositConfirmed(order)) return { skipped: true, reason: 'Deposit not confirmed' };
   if (order.plantHandoff && order.plantHandoff.status === 'delivered') {
     return { skipped: true, reason: 'already released' };
   }

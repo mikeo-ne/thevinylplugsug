@@ -364,10 +364,10 @@ export async function deliverNotification(channel, order) {
  *
  * This is the automated hand-off: no one has to retype an order into the plant's
  * inbox. Requires RESEND_API_KEY and the plant's order address
- * (`PLANT_MOBINEKO_EMAIL` / `PLANT_GREENLAKES_EMAIL`, or `PLANT_ORDERS_EMAIL` as a
- * catch-all). File links are absolute so the plant can download masters directly.
- * If a plant's order inbox is a desk forwarder, the desk BCC is skipped so the
- * same mailbox does not receive two copies.
+ * (`PLANT_*_EMAIL` per plant, or `PLANT_ORDERS_EMAIL` as a catch-all). File links
+ * are absolute so the plant can download masters directly. The desk is BCC'd; if
+ * a plant inbox happens to be the desk address, the BCC is skipped so the same
+ * mailbox does not receive two copies.
  */
 export async function emailPlantOrder(order, plant, plantId) {
   const apiKey = process.env.RESEND_API_KEY;
@@ -451,8 +451,8 @@ export async function emailPlantOrder(order, plant, plantId) {
         from: config.emailFrom,
         to: [to],
         // Keep a copy on the desk inbox so a plant reply can never go unnoticed —
-        // but never BCC an address the mail is already going to (plants whose
-        // order inbox is still a desk forwarder), or the desk gets it twice.
+        // but never BCC an address the mail is already going to, or the desk
+        // gets the same request twice.
         bcc: config.emailTo
           .split(',')
           .map((address) => address.trim())
