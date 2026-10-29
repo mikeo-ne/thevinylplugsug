@@ -1,26 +1,6 @@
 import { Reveal } from '../ui/Reveal';
 import { Icon } from '../ui/Icon';
-
-const plants = [
-  {
-    id: 'mobineko',
-    name: 'Mobineko',
-    region: 'Taiwan · worldwide fulfilment',
-    blurb:
-      'Our primary partner for colour vinyl and gatefold work. Known for tight tolerances, immaculate print and reliable dispatch to East Africa.',
-    specs: ['140g & 180g black', 'Colour / splatter runs', 'Gatefold & inner sleeves', 'Consolidated air freight'],
-    lead: '9–11 weeks',
-  },
-  {
-    id: 'greenlakes',
-    name: 'Green Lakes Pressing',
-    region: 'Lithuania · EU eco vinyl specialists',
-    blurb:
-      'Our EU partner for eco-conscious releases: recycled compound vinyl, bio-wrap and dispatch into Europe or consolidated on to Kampala.',
-    specs: ['Recycled eco vinyl', 'Bio-degradable wrap', 'Direct EU dispatch', 'Short-run friendly'],
-    lead: '7–10 weeks',
-  },
-];
+import { plants as pressedPlants } from '../../lib/pricing';
 
 const audiences = [
   { title: 'Independent artists', body: 'Your first physical release without a label advance.', icon: 'music' as const },
@@ -48,15 +28,17 @@ export function Plants() {
           </div>
         </Reveal>
 
-        <div className="mt-12 grid gap-5 md:grid-cols-2">
-          {plants.map((plant, index) => (
-            <Reveal key={plant.id} delay={index * 90}>
-              <article className="group relative h-full overflow-hidden rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.05] to-transparent p-6 transition-all duration-500 hover:border-lime/30 sm:p-7">
+        <div className="mt-12 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+          {pressedPlants.map((plant, index) => (
+            <Reveal key={plant.id} delay={index * 70}>
+              <article className="group relative flex h-full flex-col overflow-hidden rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.05] to-transparent p-6 transition-all duration-500 hover:border-lime/30 sm:p-7">
                 <div className="pointer-events-none absolute -right-20 -top-20 h-52 w-52 rounded-full bg-lime/[0.06] blur-3xl transition-opacity duration-500 group-hover:opacity-100" />
                 <div className="relative flex items-start justify-between gap-4">
-                  <div>
-                    <div className="text-[10px] uppercase tracking-[0.2em] text-muted">{plant.region}</div>
-                    <h3 className="mt-2 font-display text-[26px] font-semibold tracking-tight text-bone">
+                  <div className="min-w-0">
+                    <div className="text-[10px] uppercase leading-relaxed tracking-[0.16em] text-muted">
+                      {plant.region}
+                    </div>
+                    <h3 className="mt-2 font-display text-[24px] font-semibold tracking-tight text-bone">
                       {plant.name}
                     </h3>
                   </div>
@@ -64,19 +46,17 @@ export function Plants() {
                     <Icon name="factory" size={19} />
                   </span>
                 </div>
-                <p className="relative mt-4 text-[13px] leading-relaxed text-muted">{plant.blurb}</p>
-                <ul className="relative mt-5 grid grid-cols-2 gap-2">
-                  {plant.specs.map((spec) => (
-                    <li key={spec} className="flex items-start gap-2 text-[11.5px] text-bone/80">
-                      <Icon name="check" size={12} strokeWidth={2.6} className="mt-0.5 shrink-0 text-lime" />
-                      {spec}
-                    </li>
-                  ))}
-                </ul>
-                <div className="relative mt-6 flex items-center justify-between border-t border-white/[0.08] pt-4 text-[11px]">
-                  <span className="uppercase tracking-[0.16em] text-muted">Lead time</span>
-                  <span className="num text-bone">{plant.lead}</span>
-                </div>
+                <p className="relative mt-4 flex-1 text-[13px] leading-relaxed text-muted">{plant.note}</p>
+                <dl className="relative mt-6 grid grid-cols-2 gap-2 border-t border-white/[0.08] pt-4 text-[11px]">
+                  <div>
+                    <dt className="uppercase tracking-[0.14em] text-muted">Minimum run</dt>
+                    <dd className="num mt-1 text-bone">{plant.moq.toLocaleString('en-US')} units</dd>
+                  </div>
+                  <div className="text-right">
+                    <dt className="uppercase tracking-[0.14em] text-muted">Lead time</dt>
+                    <dd className="num mt-1 text-bone">{plant.leadTime}</dd>
+                  </div>
+                </dl>
               </article>
             </Reveal>
           ))}

@@ -30,11 +30,18 @@ export interface Quote {
     pressingCost: number;
     sleeveCost: number;
     setupCost: number;
+    /** Plant rate-card adjustment (negative for GZ at volume, positive for premium houses). */
+    plantAdjustment: number;
+    plantFactor: number;
     unitPrice: number;
     sleevePerUnit: number;
   };
   vinylType: VinylType;
   sleeve: SleeveOption;
+  plant: Plant;
+  /** True when the requested plant could not take the run and we moved it. */
+  plantAdjusted?: boolean;
+  requestedPlant?: string | null;
 }
 
 export interface VinylType {
@@ -45,9 +52,17 @@ export interface VinylType {
   tagline: string;
   description: string;
   setupFee: number;
+  /** Setup override for short runs — a lathe cut carries no separate plate cost. */
+  setup?: Record<number, number>;
   unit: Record<number, number>;
   turnaround: string;
   badge: string | null;
+}
+
+export interface QuantityTier {
+  quantity: number;
+  name: string;
+  note: string;
 }
 
 export interface SleeveOption {
@@ -73,7 +88,18 @@ export interface PaymentMethod {
 export interface Plant {
   id: string;
   name: string;
+  country: string;
   region: string;
+  kind: 'pressing' | 'lathe';
+  /** Minimum order quantity the plant will quote. */
+  moq: number;
+  /** Upper bound for boutiques and lathe houses; null means no cap. */
+  maxQuantity: number | null;
+  /** Their rate card relative to our base price (1 = base). */
+  priceFactor: number;
+  leadTime: string;
+  note: string;
+  ordersEmail?: string | null;
 }
 
 export interface CompanyConfig {
@@ -92,6 +118,7 @@ export interface CompanyConfig {
   managementFeeRate: number;
   depositRate: number;
   quantities: number[];
+  quantityTiers?: QuantityTier[];
   vinylTypes: VinylType[];
   sleeves: SleeveOption[];
   paymentMethods: PaymentMethod[];
@@ -120,6 +147,7 @@ export interface DraftConfiguration {
   quantity: number;
   vinylTypeId: string;
   sleeveId: string;
+  plantId?: string;
 }
 
 export interface ClientDetails {
@@ -187,7 +215,14 @@ export interface PlantPayload {
   artistOrLabel: string;
   contact: { email: string; whatsapp: string };
   delivery: { type: string; address: string; city: string; country: string };
-  production: { quantity: number; format: string; packaging: string; turnaround: string | null };
+  production: {
+    quantity: number;
+    format: string;
+    packaging: string;
+    turnaround: string | null;
+    plant?: string | null;
+    plantMinimumRun?: number | null;
+  };
   masterAndArtwork: { role: string; filename: string; bytes: number; download: string }[];
   commercial: {
     factoryCostUsd: number;
@@ -259,6 +294,13 @@ export interface AdminOverview {
     plantEmail: boolean;
     plantWebhook: boolean;
     whatsappTemplate?: { name: string; language: string; category: string; body: string; parameters: number };
-    plants: { id: string; name: string; ordersEmail: string | null }[];
+    plants: {
+      id: string;
+      name: string;
+      region?: string;
+      moq?: number;
+      leadTime?: string;
+      ordersEmail: string | null;
+    }[];
   };
 }

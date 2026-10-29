@@ -321,6 +321,10 @@ export function SuccessPage() {
                 <SummaryRow label="Quantity" value={`${order.configuration.quantity} units`} />
                 <SummaryRow label="Packaging" value={quote.sleeve?.name ?? String(order.configuration.sleeveId)} />
                 <SummaryRow
+                  label="Plant"
+                  value={quote.plant?.name ?? String(order.configuration.plantId ?? order.plantPreference ?? 'Mobineko')}
+                />
+                <SummaryRow
                   label="Delivery"
                   value={`${order.client.deliveryCity}, ${order.client.country}`}
                 />

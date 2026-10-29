@@ -62,7 +62,7 @@ The pipeline runs itself. What happens, in order:
 | When | What fires | Needs |
 | --- | --- | --- |
 | Client submits an order | Email to the desk + WhatsApp to management (Slack too, if wired) | `RESEND_API_KEY`, `NOTIFY_EMAIL_TO` · `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_ID`, `NOTIFY_WHATSAPP_TO` |
-| You confirm the deposit in `/admin` | The production request is **emailed to the plant** with file links, and POSTed to their endpoint if you have one | `PLANT_MOBINEKO_EMAIL` / `PLANT_GREENLAKES_EMAIL` + `RESEND_API_KEY` |
+| You confirm the deposit in `/admin` | The production request is **emailed to the plant the client chose** (MOQ-checked) with file links, and POSTed to their endpoint if you have one | `PLANT_*_EMAIL` + `RESEND_API_KEY` |
 | Order submitted (optional) | Release straight away instead of waiting for the deposit | `PLANT_FORWARD_ON_ORDER=true` |
 
 Everything is idempotent: confirming the deposit twice never sends the plant a second copy,
@@ -72,12 +72,27 @@ and a failed hand-off shows as `failed` in the console with a one-click retry.
 | --- | --- | --- |
 | `PLANT_MOBINEKO_EMAIL` | `web@mobineko.com` | Where Mobineko order requests go (published inbox — replace with your account rep once one is assigned) |
 | `PLANT_GREENLAKES_EMAIL` | `hi@greenlakespressing.com` | Where Green Lakes order requests go (customer-service inbox — replace with your account rep once one is assigned) |
+| `PLANT_SEABASS_EMAIL` | — | Seabass Vinyl (UK, MOQ 50). Unset = the console shows the hand-off as needing an address |
+| `PLANT_DRDUB_EMAIL` | — | Dr. Dub (AT, lathe cuts, MOQ 1) |
+| `PLANT_GZMEDIA_EMAIL` | — | GZ Media (CZ, MOQ 250) |
+| `PLANT_DEEPGROOVES_EMAIL` | — | Deepgrooves (NL, MOQ 100) |
 | `PLANT_ORDERS_EMAIL` | — | Catch-all used when a plant has no address of its own |
 | `PLANT_AUTO_FORWARD` | `true` (default) | `false` restores the manual "Forward" button |
 | `PLANT_FORWARD_ON_ORDER` | `false` (default) | `true` releases on submission, before the deposit |
 | `PLANT_WEBHOOK_URL` | — | Optional JSON endpoint, used in addition to email |
 
-The desk is BCC'd on every plant email, so a plant's reply always has a home. Verify the whole
+The desk is BCC'd on every plant email, so a plant's reply always has a home.
+
+### Run sizes and the plant panel
+
+`shared/pricing.js` is the single source of truth for the seven run sizes (1, 25, 50, 100, 250,
+500, 1,000), the per-unit price at each, and each plant's MOQ, cap, lead time and rate card. The
+configurator disables plants that cannot take the selected run, and the order is re-routed to the
+cheapest eligible plant if the client shrinks the run below their plant's MOQ.
+
+Add a plant by adding one object to `PRESSING_PLANTS` — the dropdown, the brokerage section, the
+quote maths and the automated hand-off all read from it. Point `ordersEmail` at that plant's inbox
+via an env var so the deposit-confirmation email has somewhere to land. Verify the whole
 chain without credentials: `npm run test:automation` (35 checks against a local sink).
 
 ### WhatsApp template

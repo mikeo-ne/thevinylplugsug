@@ -418,6 +418,15 @@ export function AdminPage() {
                       value={`${selected.configuration.quantity} × ${selected.quote.vinylType?.name ?? ''}`}
                     />
                     <Detail label="Packaging" value={selected.quote.sleeve?.name ?? ''} />
+                    <Detail
+                      label="Plant"
+                      value={
+                        selected.quote.plant?.name ??
+                        overview?.plants.find((plant) => plant.id === selected.plantPreference)?.name ??
+                        selected.plantPreference ??
+                        'Mobineko'
+                      }
+                    />
                     <Detail label="Per record" value={usd(selected.quote.perUnit, { cents: true })} />
                     <Detail
                       label="Money"

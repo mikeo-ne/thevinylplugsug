@@ -6,7 +6,13 @@ import { useAnimatedNumber } from '../../hooks/useAnimatedNumber';
 import { Icon } from '../ui/Icon';
 import { usd, ugx } from '../../lib/format';
 import { VinylMockup } from '../vinyl/VinylMockup';
-import { quoteFor } from '../../lib/pricing';
+import { plantsForQuantity, plantSupportsQuantity, quantityTiers, quoteFor } from '../../lib/pricing';
+
+const TIERS = new Map(quantityTiers.map((tier) => [tier.quantity, tier]));
+
+function quantityTier(quantity: number) {
+  return TIERS.get(quantity) ?? { quantity, name: 'units', note: '' };
+}
 
 function StepHeader({ index, title, hint }: { index: string; title: string; hint: string }) {
   return (
@@ -21,17 +27,22 @@ function StepHeader({ index, title, hint }: { index: string; title: string; hint
 }
 
 export function Configurator() {
-  const { configuration, setConfiguration, quote, fxRate } = useDraft();
+  const { configuration, setConfiguration, quote, fxRate, plantPreference, setPlantPreference } = useDraft();
   const { config } = useConfig();
   const animatedTotal = useAnimatedNumber(quote.total);
   const animatedFee = useAnimatedNumber(quote.managementFee);
   const animatedFactory = useAnimatedNumber(quote.factoryCost);
 
-  const savings = useMemo(() => {
-    if (configuration.quantity === 100) return 0;
-    const shortRun = quoteFor({ ...configuration, quantity: 100 }, fxRate);
-    return Math.max(0, shortRun.perUnit - quote.perUnit);
-  }, [configuration, quote.perUnit, fxRate]);
+  // The next rung up the ladder — this is where the per-record saving is.
+  const ladder = useMemo(() => {
+    const next = quantityTiers.find((tier) => tier.quantity > configuration.quantity);
+    if (!next) return null;
+    const bigger = quoteFor({ ...configuration, quantity: next.quantity }, fxRate, plantPreference);
+    const perRecord = Math.max(0, quote.perUnit - bigger.perUnit);
+    return { next, perRecord, quantised: bigger.quantity };
+  }, [configuration, quote.perUnit, fxRate, plantPreference]);
+
+  const eligiblePlants = plantsForQuantity(configuration.quantity).length;
 
 
   return (
@@ -56,9 +67,14 @@ export function Configurator() {
           <div className="space-y-8">
             {/* quantity */}
             <div className="panel p-5 sm:p-6">
-              <StepHeader index="01" title="Quantity" hint="Minimum pressing run: 100" />
-              <div className="grid grid-cols-3 gap-2.5 sm:gap-3">
+              <StepHeader
+                index="01"
+                title="Quantity"
+                hint="1 lathe cut → 1,000-unit plant run"
+              />
+              <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 sm:gap-2.5 xl:grid-cols-7">
                 {config.quantities.map((quantity) => {
+                  const tier = quantityTier(quantity);
                   const active = configuration.quantity === quantity;
                   const unit = quote.vinylType.unit[quantity];
                   return (
@@ -66,43 +82,55 @@ export function Configurator() {
                       key={quantity}
                       type="button"
                       aria-pressed={active}
+                      aria-label={`${quantity.toLocaleString('en-US')} units — ${tier.name}`}
                       onClick={() => setConfiguration({ quantity })}
-                      className={`group relative overflow-hidden rounded-xl border px-2 py-4 text-center transition-all duration-300 sm:px-4 sm:py-5 ${
+                      className={`group relative overflow-hidden rounded-xl border px-1.5 py-3 text-center transition-all duration-300 sm:px-2 sm:py-4 ${
                         active
                           ? 'border-lime bg-lime/[0.09] shadow-[0_0_0_1px_rgba(204,255,0,0.4),0_16px_40px_-24px_rgba(204,255,0,0.7)]'
                           : 'border-white/10 bg-black/20 hover:border-white/25 hover:bg-white/[0.03]'
                       }`}
                     >
                       <span
-                        className={`num block text-[24px] font-semibold leading-none transition-colors sm:text-[30px] ${
+                        className={`num block text-[20px] font-semibold leading-none transition-colors sm:text-[23px] ${
                           active ? 'text-lime' : 'text-bone'
                         }`}
                       >
-                        {quantity}
+                        {quantity.toLocaleString('en-US')}
                       </span>
-                      <span className="mt-2 block text-[10px] uppercase tracking-[0.16em] text-muted">
-                        units
+                      <span className="mt-1.5 block text-[9px] uppercase tracking-[0.1em] text-muted">
+                        {tier.name}
                       </span>
-                      <span className="mt-3 block text-[11px] text-muted">
+                      <span className="mt-2 block text-[10.5px] text-muted">
                         {unit ? `${usd(unit, { cents: true })}/ea` : '—'}
                       </span>
                       {quantity === 250 && (
-                        <span className="absolute right-2 top-2 rounded-full bg-lime/15 px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-wider text-lime">
-                          Popular
-                        </span>
+                        <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-lime" aria-hidden="true" />
                       )}
                       {active && (
-                        <span className="absolute inset-x-3 bottom-0 h-px animate-[bar-grow_0.5s_ease-out] bg-lime/60" />
+                        <span className="absolute inset-x-2 bottom-0 h-px animate-[bar-grow_0.5s_ease-out] bg-lime/60" />
                       )}
                     </button>
                   );
                 })}
               </div>
+              <p className="mt-3 text-[11px] leading-relaxed text-muted">
+                {quote.quantity === 1 ? (
+                  <>
+                    A single lathe cut is pressed one record at a time and ships from{' '}
+                    <span className="text-bone">{quote.plant.name}</span> — no plates, no minimum.
+                  </>
+                ) : (
+                  <>
+                    Per-unit price falls as the run grows: a 25-unit micro-run pays for plates it can
+                    never amortise, a 1,000-unit plant run gets the factory&apos;s best rate.
+                  </>
+                )}
+              </p>
             </div>
 
             {/* vinyl type */}
             <div className="panel p-5 sm:p-6">
-              <StepHeader index="02" title="Vinyl size & type" hint="Pressed at Mobineko / Green Lakes" />
+              <StepHeader index="02" title="Vinyl size & type" hint={`Quoted at ${quote.plant.name}`} />
               <div className="space-y-2.5">
                 {config.vinylTypes.map((type) => {
                   const active = configuration.vinylTypeId === type.id;
@@ -209,19 +237,85 @@ export function Configurator() {
               </div>
             </div>
 
+            {/* plant / supplier */}
+            <div className="panel p-5 sm:p-6">
+              <StepHeader
+                index="04"
+                title="Plant / supplier"
+                hint={`${eligiblePlants} of ${config.plants.length} take this run`}
+              />
+
+              <div className="relative">
+                <label htmlFor="plant-select" className="sr-only">
+                  Pressing plant
+                </label>
+                <select
+                  id="plant-select"
+                  className="field dark-select pr-10"
+                  value={quote.plant.id}
+                  onChange={(event) => setPlantPreference(event.target.value)}
+                >
+                  {config.plants.map((plant) => {
+                    const eligible = plantSupportsQuantity(plant, configuration.quantity);
+                    return (
+                      <option key={plant.id} value={plant.id} disabled={!eligible} className="bg-[#161615]">
+                        {plant.name} — {plant.region} (MOQ {plant.moq}){eligible ? '' : ' · not available for this run'}
+                      </option>
+                    );
+                  })}
+                </select>
+                <Icon
+                  name="chevron-down"
+                  size={15}
+                  className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-muted"
+                />
+              </div>
+
+              <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                <PlantFact label="Minimum run" value={`${quote.plant.moq} units`} />
+                <PlantFact label="Factory lead time" value={quote.plant.leadTime} />
+                <PlantFact
+                  label="Rate card"
+                  value={
+                    quote.plant.priceFactor === 1
+                      ? 'Base rate'
+                      : `${quote.plant.priceFactor > 1 ? '+' : '−'}${Math.round(
+                          Math.abs(quote.plant.priceFactor - 1) * 100,
+                        )}% vs base`
+                  }
+                />
+              </div>
+
+              <p className="mt-3 flex items-start gap-2 text-[11.5px] leading-relaxed text-muted">
+                <Icon name="factory" size={14} className="mt-0.5 shrink-0 text-lime/80" />
+                <span>
+                  {quote.plant.note}
+                  {quote.plant.id !== plantPreference && (
+                    <> Switched to {quote.plant.name} because your previous plant can&apos;t take this run.</>
+                  )}
+                </span>
+              </p>
+            </div>
+
             <div className="flex items-start gap-3 rounded-xl border border-white/[0.07] bg-white/[0.02] px-4 py-3.5">
               <Icon name="bolt" size={16} className="mt-0.5 shrink-0 text-lime" />
               <p className="text-[12px] leading-relaxed text-muted">
-                {savings > 0.05 ? (
+                {ladder && ladder.perRecord > 0.05 ? (
                   <>
-                    You're saving{' '}
-                    <span className="font-medium text-lime">{usd(savings, { cents: true })}</span> per record
-                    versus a 100-unit run. Volume discounts are applied by the factory, not by us.
+                    Move to{' '}
+                    <span className="font-medium text-bone">
+                      {ladder.next.quantity.toLocaleString('en-US')} units
+                    </span>{' '}
+                    ({ladder.next.name.toLowerCase()}) and the all-in price drops{' '}
+                    <span className="font-medium text-lime">
+                      {usd(ladder.perRecord, { cents: true })}
+                    </span>{' '}
+                    per record — the 25% fee stays the same.
                   </>
                 ) : (
                   <>
-                    At 100 units the factory charges its short-run rate. Move to 250 or 500 units to cut the
-                    per-record price — the fee stays 25%.
+                    You&apos;re on the best rate we can quote: the factory&apos;s 1,000-unit plant run. Only
+                    the 25% management fee sits on top.
                   </>
                 )}
               </p>
@@ -264,6 +358,7 @@ export function Configurator() {
                   </span>
                   <span className="chip">{quote.vinylType.shortName}</span>
                   <span className="chip">{quote.sleeve.shortName}</span>
+                  <span className="chip">{quote.plant.name}</span>
                   <span className="chip">{usd(quote.perUnit, { cents: true })}/ea</span>
                 </div>
 
@@ -280,7 +375,18 @@ export function Configurator() {
                       value={usd(quote.lines.sleeveCost, { cents: true })}
                     />
                   )}
-                  <Row label="Factory setup, plates & test press" value={usd(quote.lines.setupCost, { cents: true })} />
+                  {quote.lines.setupCost > 0 && (
+                    <Row label="Factory setup, plates & test press" value={usd(quote.lines.setupCost, { cents: true })} />
+                  )}
+                  {Math.abs(quote.lines.plantAdjustment) >= 0.01 && (
+                    <Row
+                      label={`${quote.plant.name} rate card`}
+                      value={`${quote.lines.plantAdjustment > 0 ? '+' : '−'}${usd(
+                        Math.abs(quote.lines.plantAdjustment),
+                        { cents: true },
+                      )}`}
+                    />
+                  )}
                   <div className="my-2.5 h-px bg-white/[0.07]" />
                   <Row
                     label="Total factory cost"
@@ -354,6 +460,15 @@ export function Configurator() {
         </div>
       </div>
     </section>
+  );
+}
+
+function PlantFact({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-white/[0.07] bg-black/25 px-3 py-2">
+      <span className="block text-[9.5px] uppercase tracking-[0.13em] text-muted">{label}</span>
+      <span className="mt-0.5 block text-[12px] text-bone">{value}</span>
+    </div>
   );
 }
 

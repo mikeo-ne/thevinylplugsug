@@ -10,6 +10,7 @@ import { Icon } from '../components/ui/Icon';
 import { Stepper } from '../components/order/Stepper';
 import { FileDropzone } from '../components/order/FileDropzone';
 import { OrderSummary } from '../components/order/OrderSummary';
+import { plantSupportsQuantity } from '../lib/pricing';
 
 type Errors = Record<string, string>;
 
@@ -235,17 +236,26 @@ export function OrderPage() {
                         autoComplete="tel"
                       />
                     </Field>
-                    <Field label="Preferred pressing plant" hint="Final assignment confirmed at proof stage.">
+                    <Field
+                      label="Preferred pressing plant"
+                      hint={`MOQ shown per plant · this run is ${quote.quantity} ${
+                        quote.quantity === 1 ? 'unit' : 'units'
+                      }`}
+                    >
                       <select
                         className="field dark-select"
-                        value={plantPreference}
+                        value={quote.plant.id}
                         onChange={(event) => setPlantPreference(event.target.value)}
                       >
-                        {config.plants.map((plant) => (
-                          <option key={plant.id} value={plant.id} className="bg-[#161615]">
-                            {plant.name} — {plant.region}
-                          </option>
-                        ))}
+                        {config.plants.map((plant) => {
+                          const eligible = plantSupportsQuantity(plant, quote.quantity);
+                          return (
+                            <option key={plant.id} value={plant.id} disabled={!eligible} className="bg-[#161615]">
+                              {plant.name} — {plant.region} (MOQ {plant.moq})
+                              {eligible ? '' : ' · not available for this run'}
+                            </option>
+                          );
+                        })}
                       </select>
                     </Field>
                   </div>
@@ -605,7 +615,7 @@ export function OrderPage() {
                     <ReviewRow label="Format" value={quote.vinylType.name} />
                     <ReviewRow label="Quantity" value={`${quote.quantity} units`} />
                     <ReviewRow label="Packaging" value={quote.sleeve.name} />
-                    <ReviewRow label="Plant" value={config.plants.find((p) => p.id === plantPreference)?.name ?? 'Mobineko'} />
+                    <ReviewRow label="Plant" value={`${quote.plant.name} · MOQ ${quote.plant.moq}`} />
                   </ReviewBlock>
 
                   <ReviewBlock title="Files" onEdit={() => jumpTo(2)}>

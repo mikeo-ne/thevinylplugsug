@@ -7,7 +7,7 @@ import { whatsappUrl } from '../../lib/contact';
 import { useAnimatedNumber } from '../../hooks/useAnimatedNumber';
 
 const stats = [
-  { value: '100–500', label: 'Minimum run', detail: 'per release' },
+  { value: '1–1,000', label: 'Run sizes', detail: 'lathe cut to plant run' },
   { value: '7–11 wks', label: 'Factory turnaround', detail: 'after proof sign-off' },
   { value: '25%', label: 'All-in fee', detail: 'no hidden costs' },
   { value: '50%', label: 'Deposit', detail: 'balance on shipping' },

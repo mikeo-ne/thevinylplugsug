@@ -106,6 +106,34 @@ for (const route of routes) {
       if (text.includes('Naledi Sound')) {
         failures.push(`${route}: invented client pressings are back on the page`);
       }
+
+      // The run-size ladder: seven tiers, from a single lathe cut to a plant run.
+      const tiers = [...root.querySelectorAll('[aria-label*=" units — "]')].map((el) =>
+        (el.getAttribute('aria-label') ?? '').split(' ')[0],
+      );
+      const expectedTiers = ['1', '25', '50', '100', '250', '500', '1,000'];
+      if (JSON.stringify(tiers) !== JSON.stringify(expectedTiers)) {
+        failures.push(`${route}: quantity ladder is ${tiers.join('/') || 'missing'}, expected ${expectedTiers.join('/')}`);
+      }
+      if (text.includes('Minimum pressing run: 100')) {
+        failures.push(`${route}: the old 100-unit minimum is still printed`);
+      }
+
+      // The plant dropdown must list all six plants with their MOQs.
+      const plantSelect = root.querySelector('#plant-select');
+      const plantOptions = plantSelect ? [...plantSelect.querySelectorAll('option')] : [];
+      if (plantOptions.length !== 6) {
+        failures.push(`${route}: plant dropdown has ${plantOptions.length} options, expected 6`);
+      }
+      for (const name of ['Mobineko', 'Green Lakes', 'Seabass', 'Dr. Dub', 'GZ Media', 'Deepgrooves']) {
+        if (!plantOptions.some((option) => (option.textContent ?? '').includes(name))) {
+          failures.push(`${route}: plant dropdown is missing ${name}`);
+        }
+      }
+      const moqs = plantOptions.map((option) => (option.textContent ?? '').match(/MOQ (\d+)/)?.[1]).join(',');
+      if (moqs !== '25,100,50,1,250,100') {
+        failures.push(`${route}: plant MOQs are ${moqs}, expected 25,100,50,1,250,100`);
+      }
       // A fixed pixel width larger than a small phone makes the whole page scroll
       // sideways — the exact bug that cut the hero off on mobile.
       const wide = [...root.querySelectorAll('[style]')]
