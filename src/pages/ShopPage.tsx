@@ -582,10 +582,12 @@ export function ShopPage() {
                   <dt className="text-muted">Records</dt>
                   <dd className="num text-bone">{usd(subtotal)}</dd>
                 </div>
-                <div className="flex items-center justify-between">
-                  <dt className="text-muted">{delivery?.name ?? 'Delivery'}</dt>
-                  <dd className="num text-bone">{shipping === 0 ? 'Free' : usd(shipping)}</dd>
-                </div>
+                {detailed.length > 0 && (
+                  <div className="flex items-center justify-between">
+                    <dt className="text-muted">{delivery?.name ?? 'Delivery'}</dt>
+                    <dd className="num text-bone">{shipping === 0 ? 'Free' : usd(shipping)}</dd>
+                  </div>
+                )}
                 <div className="flex items-center justify-between border-t border-white/[0.08] pt-2">
                   <dt className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">Total</dt>
                   <dd className="num text-[19px] font-semibold text-lime">{usd(total)}</dd>

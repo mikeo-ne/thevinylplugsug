@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { useDraft } from '../../store/DraftContext';
 import { useConfig } from '../../hooks/useConfig';
 import { usd } from '../../lib/format';
@@ -56,11 +57,13 @@ export function VinylSamples() {
             const sleeve = config.sleeves.find((option) => option.id === item.sleeveId);
             return (
               <Reveal key={item.art} delay={index * 60}>
-                <button
-                  type="button"
-                  onClick={() => load(item.vinylTypeId, item.sleeveId)}
-                  className="group flex h-full w-full flex-col overflow-hidden rounded-2xl border border-white/[0.09] bg-white/[0.02] p-3.5 text-left transition-all duration-300 hover:border-lime/40 hover:bg-white/[0.04] sm:p-4"
-                >
+                <div className="group flex h-full w-full flex-col rounded-2xl border border-white/[0.09] bg-white/[0.02] p-3.5 transition-all duration-300 hover:border-lime/40 hover:bg-white/[0.04] sm:p-4">
+                  <button
+                    type="button"
+                    onClick={() => load(item.vinylTypeId, item.sleeveId)}
+                    className="flex flex-1 flex-col text-left"
+                    aria-label={`Load ${design.title} into the configurator`}
+                  >
                   <div className="relative w-full overflow-hidden rounded-xl bg-black/30">
                     <VinylMockup
                       vinylTypeId={item.vinylTypeId}
@@ -73,16 +76,28 @@ export function VinylSamples() {
                     </span>
                   </div>
 
-                  <div className="mt-3 flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <h3 className="truncate text-[13px] font-medium text-bone">{design.title}</h3>
-                      <p className="truncate text-[11px] text-muted">{design.note}</p>
+                    <div className="mt-3 flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <h3 className="truncate text-[13px] font-medium text-bone">{design.title}</h3>
+                        <p className="truncate text-[11px] text-muted">{design.note}</p>
+                      </div>
+                      <span className="shrink-0 text-right font-mono text-[9.5px] uppercase tracking-[0.1em] text-lime/80">
+                        {item.release}
+                      </span>
                     </div>
-                    <span className="shrink-0 text-right font-mono text-[9.5px] uppercase tracking-[0.1em] text-lime/80">
-                      {item.release}
-                    </span>
+                  </button>
+
+                  <div className="mt-2.5 flex items-center justify-between gap-2 border-t border-white/[0.06] pt-2.5">
+                    <span className="text-[10px] uppercase tracking-[0.12em] text-muted">In the shop</span>
+                    <Link
+                      to="/shop"
+                      className="flex items-center gap-1 text-[11.5px] font-medium text-lime transition-opacity hover:opacity-80"
+                    >
+                      Buy this record
+                      <Icon name="arrow-right" size={12} />
+                    </Link>
                   </div>
-                </button>
+                </div>
               </Reveal>
             );
           })}
