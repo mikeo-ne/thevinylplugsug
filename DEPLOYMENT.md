@@ -220,12 +220,13 @@ fixes it:
 
 | Variable | What to paste |
 | --- | --- |
-| `DATABASE_URL` | A Postgres connection string. Neon, Supabase, Vercel Postgres, RDS — anything that speaks the protocol. |
+| `DATABASE_URL` | A Postgres connection string. Neon, Supabase, Vercel Postgres, RDS — anything that speaks the protocol. `POSTGRES_URL` and `POSTGRES_PRISMA_URL` are accepted too, because that is what the Vercel Neon integration injects. |
 
 ### Get a database (about three minutes)
 
-1. [neon.tech](https://neon.tech) → **New project** (free tier is plenty; pick the region closest to
-   your users, e.g. `eu-central-1`).
+1. Either **Vercel → Storage → Create database → Neon** (it injects the connection string into the
+   project for you — no copy-paste), or [neon.tech](https://neon.tech) → **New project** (free tier
+   is plenty; pick the region closest to your users, e.g. `eu-central-1`).
 2. Copy the **connection string** — it looks like
    `postgres://user:password@ep-xxxx.eu-central-1.aws.neon.tech/neondb?sslmode=require`.
 3. Vercel → project → **Settings → Environment Variables** → add `DATABASE_URL` for

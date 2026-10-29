@@ -99,7 +99,7 @@ const COLUMN_NAMES = {
  * @param {string} [options.url] `postgres://…` connection string
  * @param {{query: Function}} [options.client] an already-connected client (tests)
  */
-export function postgresDriver({ url, client: injectedClient } = {}) {
+export function postgresDriver({ url, client: injectedClient, variable = 'DATABASE_URL' } = {}) {
   let pool = null;
   let client = injectedClient ?? null;
   let ownsPool = false;
@@ -164,6 +164,8 @@ export function postgresDriver({ url, client: injectedClient } = {}) {
     name: 'postgres',
     label: 'PostgreSQL',
     persistent: true,
+
+    variable,
 
     async init() {
       if (ready) return ready;
