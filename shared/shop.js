@@ -15,7 +15,7 @@
 const FORMATS = {
   lp_standard: { format: '12" LP · 33⅓ rpm', weight: '140 g black vinyl' },
   lp_colored: { format: '12" LP · 33⅓ rpm', weight: '140 g colour vinyl' },
-  seven_single: { format: '7" single · 45 rpm', weight: '45 rpm two-track' },
+  seven_single: { format: '7" single · 45 rpm', weight: 'Standard 7" vinyl' },
 };
 
 /**
