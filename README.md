@@ -149,6 +149,13 @@ session, in-memory).
 
 ---
 
+## Going to market
+
+[`PITCH.md`](./PITCH.md) holds the first-client kit: the WhatsApp message, a 5-minute demo script,
+the three objections you will hear, and the pre-pitch checklist (rotate the passcode, light up an
+alert channel, reset demo data). The 1200×630 share card at `public/og-image.png` is what renders in
+the link preview.
+
 ## Notifications
 
 Alerts fire the moment an order is created. Channels are **env-gated and independent** — a channel
