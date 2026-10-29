@@ -227,10 +227,30 @@ export async function placeShopOrder(body = {}) {
     clientUserAgent: text(body.userAgent, 200) || null,
   };
 
-  // Decrement first, then commit the order — both happen in this same tick.
-  for (const line of quote.lines) {
-    writeStock(line.releaseId, stockOf(line.releaseId) - line.quantity);
+  // Take the records out of stock *in the database* before the order exists.
+  // The loop above explains nicely what is short; this is the part that actually
+  // holds the line when two fans tap Buy on the last copy at the same moment.
+  const reservation = await db_.reserve(
+    quote.lines.map((line) => ({ releaseId: line.releaseId, quantity: line.quantity })),
+  );
+  if (!reservation.ok) {
+    const release = shopReleaseById(reservation.releaseId);
+    const left = Math.max(0, Number(reservation.available ?? 0));
+    return fail(
+      409,
+      left === 0
+        ? `${release.title} just sold out — someone else got the last copy.`
+        : `Only ${left} cop${left === 1 ? 'y' : 'ies'} of ${release.title} left — adjust the quantity.`,
+      { code: 'out_of_stock', releaseId: reservation.releaseId, available: left },
+    );
   }
+  if (!reservation.stock) {
+    // The file driver keeps its own copy; nothing outside this process can race.
+    for (const line of quote.lines) {
+      writeStock(line.releaseId, stockOf(line.releaseId) - line.quantity);
+    }
+  }
+
   state.orders.unshift(order);
   db_.save();
 

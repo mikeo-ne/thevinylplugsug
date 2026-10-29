@@ -424,3 +424,63 @@ export interface AdminShop {
     lowStock: boolean;
   }[];
 }
+
+/* ---------------------------- system health ---------------------------- */
+
+export interface DatabaseHealth {
+  ok: boolean;
+  driver: 'postgres' | 'redis' | 'file' | string;
+  label: string;
+  /** False means the data lives on the function's disk and dies with it. */
+  persistent: boolean;
+  latencyMs?: number;
+  detail?: string;
+  error?: string;
+  ready?: boolean;
+  counts?: Record<string, number>;
+}
+
+export interface AlertChannelEnv {
+  channel: string;
+  ready: boolean;
+  variables: { key: string; set: boolean; secret: boolean }[];
+  missing: string[];
+}
+
+export interface AlertFailure {
+  id: string;
+  channel: string;
+  orderId: string | null;
+  attempts: number;
+  error: string;
+  lastAttemptAt: string;
+  message?: string;
+}
+
+export interface SystemHealth {
+  database: DatabaseHealth;
+  alerts: {
+    channels: { channel: string; label: string; icon?: string; live: boolean; mode: string; detail: string }[];
+    env: AlertChannelEnv[];
+    outbox: {
+      counts: Record<string, number>;
+      failures: AlertFailure[];
+      retryable: number;
+    };
+    automaticRetry: boolean;
+  };
+  runtime: { node: string; region: string | null; publicBaseUrl: string | null };
+}
+
+export interface AlertTestResult {
+  channel: string;
+  status: 'delivered' | 'failed' | 'unconfigured' | 'simulated';
+  mode: string;
+  httpStatus?: number;
+  target?: string;
+  detail?: string;
+  error?: string;
+  missing?: string[];
+  latencyMs?: number;
+  attemptedAt: string;
+}

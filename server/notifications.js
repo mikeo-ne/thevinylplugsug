@@ -825,3 +825,197 @@ export function channelStatus() {
     },
   ];
 }
+
+/* ------------------------------------------------------------------ *
+ * Alert plumbing — what is configured, and can we prove it works?
+ * ------------------------------------------------------------------ */
+
+const ALERT_ENV = {
+  email: ['RESEND_API_KEY', 'NOTIFY_EMAIL_TO', 'NOTIFY_EMAIL_FROM'],
+  whatsapp: ['WHATSAPP_TOKEN', 'WHATSAPP_PHONE_ID', 'NOTIFY_WHATSAPP_TO'],
+  slack: ['SLACK_WEBHOOK_URL'],
+  webhook: ['NOTIFY_WEBHOOK_URL'],
+  plant: ['RESEND_API_KEY', 'PLANT_ORDERS_EMAIL'],
+};
+
+/** Exactly which variables each channel needs, and whether they are set. */
+export function alertEnvCheck() {
+  return Object.entries(ALERT_ENV).map(([channel, keys]) => {
+    const variables = keys.map((key) => ({
+      key,
+      set: Boolean(process.env[key]),
+      // Never echo a secret — just say it is there.
+      secret: /KEY|TOKEN|SECRET/.test(key),
+    }));
+    // NOTIFY_EMAIL_FROM is optional (Resend's test sender is the fallback).
+    const required = variables.filter((variable) => variable.key !== 'NOTIFY_EMAIL_FROM');
+    return {
+      channel,
+      ready: required.every((variable) => variable.set),
+      variables,
+      missing: required.filter((variable) => !variable.set).map((variable) => variable.key),
+    };
+  });
+}
+
+const senderDomain = () =>
+  (process.env.NOTIFY_EMAIL_FROM ?? 'onboarding@resend.dev').includes('@')
+    ? (process.env.NOTIFY_EMAIL_FROM ?? 'onboarding@resend.dev').split('@')[1].replace(/[>)].*$/, '')
+    : 'resend.dev';
+
+/**
+ * Send a real alert on one channel and report exactly what the provider said.
+ *
+ * This is the difference between "alerts are configured" and "alerts work": the
+ * console can press this and see Resend's or Meta's own error text, rather than
+ * a green tick that only means a variable was non-empty.
+ */
+export async function sendTestAlert(channel) {
+  const config = notificationConfig();
+  const stamp = new Date().toISOString();
+  const base = (process.env.PUBLIC_BASE_URL ?? 'https://thevinylplugsug.vercel.app').replace(/\/$/, '');
+  const check = alertEnvCheck().find((entry) => entry.channel === channel);
+  const attemptedAt = Date.now();
+
+  try {
+    if (channel === 'email') {
+      if (!config.email) throw new Error('RESEND_API_KEY is not set');
+      const result = await postJson(
+        RESEND_URL,
+        {
+          from: config.emailFrom,
+          to: config.emailTo.split(',').map((address) => address.trim()).filter(Boolean),
+          subject: '7H alert test — the desk can receive orders',
+          text: [
+            '7H MUSIC GROUP — ALERT TEST',
+            '',
+            `Sent ${stamp} from the operations console.`,
+            '',
+            'If you are reading this, new pressing orders and fan purchases will reach this inbox',
+            'the moment they happen — no one has to check the console.',
+            '',
+            `Console: ${base}/admin`,
+          ].join('\n'),
+          html: `
+          <div style="font-family:Inter,Helvetica,Arial,sans-serif;background:#f6f6f2;padding:24px">
+            <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:14px;overflow:hidden;border:1px solid #e6e6df">
+              <div style="background:#121212;padding:20px 24px">
+                <div style="color:#CCFF00;font-size:11px;letter-spacing:2px;text-transform:uppercase">7H Music Group</div>
+                <div style="color:#fff;font-size:19px;font-weight:600;margin-top:6px">Alert test — passing</div>
+              </div>
+              <div style="padding:20px 24px;color:#3a3a34;font-size:13.5px;line-height:1.6">
+                <p>Sent ${stamp} from the operations console.</p>
+                <p>New pressing orders and fan purchases will reach this inbox the moment they happen — nobody has to watch the console.</p>
+                <a href="${base}/admin" style="display:inline-block;margin-top:6px;background:#CCFF00;color:#121212;text-decoration:none;padding:10px 18px;border-radius:999px;font-weight:600;font-size:13px">Open the console</a>
+              </div>
+            </div>
+          </div>`,
+        },
+        { authorization: `Bearer ${process.env.RESEND_API_KEY}` },
+      );
+      return {
+        channel,
+        status: 'delivered',
+        mode: 'live',
+        httpStatus: result.httpStatus,
+        target: config.emailTo,
+        detail: `Resend accepted the message for ${config.emailTo} (sender ${senderDomain()})`,
+        latencyMs: Date.now() - attemptedAt,
+        attemptedAt: stamp,
+      };
+    }
+
+    if (channel === 'whatsapp') {
+      if (!config.whatsapp) throw new Error('WHATSAPP_TOKEN / WHATSAPP_PHONE_ID are not set');
+      if (!config.whatsappTo) throw new Error('NOTIFY_WHATSAPP_TO is not set');
+      const result = await postJson(
+        `${WHATSAPP_GRAPH_URL}/${process.env.WHATSAPP_PHONE_ID}/messages`,
+        {
+          messaging_product: 'whatsapp',
+          recipient_type: 'individual',
+          to: String(config.whatsappTo).replace(/[^0-9]/g, ''),
+          type: 'text',
+          text: {
+            preview_url: false,
+            body: `7H alert test — passing.\n\nSent ${stamp}. New orders will arrive in this chat.\n\n${base}/admin`,
+          },
+        },
+        { authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` },
+      );
+      return {
+        channel,
+        status: 'delivered',
+        mode: 'live',
+        httpStatus: result.httpStatus,
+        target: config.whatsappTo,
+        detail: 'Meta accepted the message',
+        latencyMs: Date.now() - attemptedAt,
+        attemptedAt: stamp,
+      };
+    }
+
+    if (channel === 'slack') {
+      const url = process.env.SLACK_WEBHOOK_URL;
+      if (!url) throw new Error('SLACK_WEBHOOK_URL is not set');
+      const result = await postJson(url, {
+        text: ':test_tube: 7H alert test — passing. New orders will post here.',
+      });
+      return {
+        channel,
+        status: 'delivered',
+        mode: 'live',
+        httpStatus: result.httpStatus,
+        target: 'Slack incoming webhook',
+        detail: 'Slack accepted the message',
+        latencyMs: Date.now() - attemptedAt,
+        attemptedAt: stamp,
+      };
+    }
+
+    if (channel === 'webhook') {
+      const url = process.env.NOTIFY_WEBHOOK_URL;
+      if (!url) throw new Error('NOTIFY_WEBHOOK_URL is not set');
+      const result = await postJson(url, { event: 'alert.test', sentAt: stamp });
+      return {
+        channel,
+        status: 'delivered',
+        mode: 'live',
+        httpStatus: result.httpStatus,
+        target: url.replace(/\/\/[^/]+\//, '//…/'),
+        detail: 'Your endpoint accepted the test event',
+        latencyMs: Date.now() - attemptedAt,
+        attemptedAt: stamp,
+      };
+    }
+
+    if (channel === 'plant') {
+      // The plant hand-off is the one alert that must never be tested silently:
+      // the console sends it to the plant's real order inbox.
+      return {
+        channel,
+        status: 'unconfigured',
+        mode: 'simulated',
+        error: `Set ${check?.missing.join(', ') || 'a plant order address'}`,
+        attemptedAt: stamp,
+      };
+    }
+
+    throw new Error(`Unknown channel ${channel}`);
+  } catch (error) {
+    return {
+      channel,
+      status: 'failed',
+      mode: 'live',
+      error: error?.name === 'AbortError' ? 'Request timed out after 8s' : error.message,
+      missing: check?.missing ?? [],
+      latencyMs: Date.now() - attemptedAt,
+      attemptedAt: stamp,
+    };
+  }
+}
+
+/** Try every channel at once — one press, one honest report per channel. */
+export async function sendTestAlerts(channels = ['email', 'whatsapp', 'slack', 'webhook']) {
+  const results = await Promise.all(channels.map((channel) => sendTestAlert(channel)));
+  return results;
+}

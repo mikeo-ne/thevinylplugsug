@@ -41,9 +41,10 @@ import {
   shopOrderView,
   updateShopOrder,
 } from './shop.js';
-import { notificationConfig } from './notifications.js';
-import { db_, ensureDirs, newOrderId, newId, UPLOAD_DIR } from './store.js';
+import { alertEnvCheck, notificationConfig, sendTestAlerts } from './notifications.js';
+import { db_, ensureDirs, newOrderId, newId, refreshStore, storeReady, UPLOAD_DIR } from './store.js';
 import {
+  alertOutboxSummary,
   automationConfig,
   autoForwardOrder,
   buildPlantPayload,
@@ -56,10 +57,22 @@ import {
   plantPayloadText,
   reconcileEvents,
   retryEvent,
+  retryFailedAlerts,
 } from './webhooks.js';
 
 const api = express.Router();
 api.use(express.json({ limit: '2mb' }));
+
+// How many requests this instance is handling right now. A read refreshes the
+// document only when it is the only one — see the readiness middleware below.
+let activeRequests = 0;
+api.use((req, res, next) => {
+  activeRequests += 1;
+  res.on('finish', () => {
+    activeRequests = Math.max(0, activeRequests - 1);
+  });
+  next();
+});
 
 api.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', req.headers.origin ?? '*');
@@ -67,6 +80,58 @@ api.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
   if (req.method === 'OPTIONS') return res.sendStatus(204);
   return next();
+});
+
+/**
+ * Wait for the database, then keep it fresh.
+ *
+ * The first request after a cold start opens the pool and loads the document;
+ * every request after that reuses both. Reads also pull a fresh copy at most
+ * once every couple of seconds (throttled inside the store) so a console open in
+ * one tab sees an order placed on another lambda instance.
+ */
+api.use(async (req, res, next) => {
+  try {
+    await storeReady();
+    if (req.method === 'GET') {
+      // Only reload when this is the only request in flight on this instance.
+      await refreshStore({ canReload: activeRequests === 1 });
+    }
+    next();
+  } catch (error) {
+    console.error('[7h] Store unavailable:', error.message);
+    res.status(503).json({
+      error: 'The database is not reachable right now. Please try again in a moment.',
+      code: 'store_unavailable',
+    });
+  }
+});
+
+/* ------------------------------------------------------------------ *
+ * Health
+ * ------------------------------------------------------------------ */
+
+/**
+ * One honest answer to "where does my data live, and is it still there?".
+ * Public because it exposes no secrets — just the driver, its latency and row
+ * counts — and because an uptime check should be able to read it.
+ */
+api.get('/api/health', async (req, res) => {
+  const database = await db_.health();
+  res.status(database.ok ? 200 : 503).json({
+    ok: database.ok,
+    service: '7h-vinyl-api',
+    at: new Date().toISOString(),
+    time: new Date().toISOString(),
+    runtime: process.env.VERCEL ? 'vercel' : 'node',
+    // `path`/`query` make it obvious whether a proxy or rewrite mangled the URL.
+    path: req.path,
+    query: Object.keys(req.query),
+    database,
+    alerts: {
+      channels: alertEnvCheck().map((entry) => ({ channel: entry.channel, ready: entry.ready, missing: entry.missing })),
+    },
+  });
 });
 
 /* ------------------------------------------------------------------ *
@@ -172,18 +237,6 @@ api.get('/api/files/:id/download', (req, res) => {
 /* ------------------------------------------------------------------ *
  * Public config + quoting
  * ------------------------------------------------------------------ */
-
-api.get('/api/health', (req, res) => {
-  // `path`/`query` make it obvious whether a proxy or rewrite mangled the URL.
-  res.json({
-    ok: true,
-    service: '7h-vinyl-api',
-    time: new Date().toISOString(),
-    runtime: process.env.VERCEL ? 'vercel' : 'node',
-    path: req.path,
-    query: Object.keys(req.query),
-  });
-});
 
 api.get('/api/config', (_req, res) => {
   res.json({
@@ -714,9 +767,90 @@ api.post('/api/admin/events/test', requireAdmin, async (_req, res) => {
   res.status(201).json({ event: await emitTestEvent() });
 });
 
-api.post('/api/admin/reset-demo', requireAdmin, (_req, res) => {
-  db_.reset();
+api.post('/api/admin/reset-demo', requireAdmin, async (_req, res) => {
+  await db_.reset();
   res.json({ ok: true });
+});
+
+/* ------------------------------ system ------------------------------- */
+
+/**
+ * What the console's "System" panel reads: the database driver and whether it
+ * survives a deploy, plus every alert channel and the variables it is missing.
+ */
+api.get('/api/admin/system', requireAdmin, async (_req, res) => {
+  const database = await db_.health();
+  const outbox = alertOutboxSummary();
+  res.json({
+    database,
+    alerts: {
+      channels: notificationChannels(),
+      env: alertEnvCheck(),
+      outbox,
+      automaticRetry: Boolean(process.env.CRON_SECRET),
+    },
+    runtime: {
+      node: process.version,
+      region: process.env.VERCEL_REGION ?? null,
+      publicBaseUrl: process.env.PUBLIC_BASE_URL ?? null,
+    },
+  });
+});
+
+/** Send a real test on every configured channel and report what came back. */
+api.post('/api/admin/alerts/test', requireAdmin, async (req, res) => {
+  const requested = Array.isArray(req.body?.channels) ? req.body.channels : null;
+  const allowed = ['email', 'whatsapp', 'slack', 'webhook'];
+  const channels = requested ? requested.filter((channel) => allowed.includes(channel)) : allowed;
+  const results = await sendTestAlerts(channels);
+
+  // Keep a record in the same log as real alerts, so "did anyone test the
+  // alerts?" is answerable later.
+  for (const result of results) {
+    if (result.status === 'unconfigured') continue;
+    db_.data.events.unshift({
+      id: newId('evt'),
+      orderId: null,
+      channel: result.channel,
+      mode: result.mode,
+      target: result.target ?? 'operations console',
+      message: `Manual test alert — ${result.status}`,
+      status: result.status,
+      attempts: 1,
+      httpStatus: result.httpStatus ?? null,
+      error: result.error ?? null,
+      createdAt: result.attemptedAt,
+      lastAttemptAt: result.attemptedAt,
+      payload: { test: true },
+    });
+  }
+  db_.data.events.length = Math.min(db_.data.events.length, 300);
+  db_.save();
+
+  res.status(results.some((result) => result.status === 'delivered') ? 200 : 502).json({ results });
+});
+
+/** Re-run every failed alert still under its attempt cap. */
+api.post('/api/admin/alerts/retry', requireAdmin, async (_req, res) => {
+  const summary = await retryFailedAlerts({ minAgeMs: 0 });
+  res.json({ summary, outbox: alertOutboxSummary() });
+});
+
+/**
+ * The cron safety net.
+ *
+ * Vercel calls this on the schedule in vercel.json; nothing else can, because it
+ * needs CRON_SECRET. With no secret set the route refuses to run rather than
+ * leaving an unauthenticated "send all alerts again" button on the internet.
+ */
+api.get('/api/cron/alerts', async (req, res) => {
+  const secret = process.env.CRON_SECRET;
+  if (!secret) return res.status(503).json({ error: 'CRON_SECRET is not set', code: 'cron_disabled' });
+  const header = String(req.headers.authorization ?? '');
+  if (header !== `Bearer ${secret}`) return res.status(401).json({ error: 'Unauthorised' });
+
+  const summary = await retryFailedAlerts({ limit: 20 });
+  res.json({ ok: true, at: new Date().toISOString(), summary });
 });
 
 /* ---------------------------- shop console ---------------------------- */

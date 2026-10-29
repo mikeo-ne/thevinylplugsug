@@ -4,7 +4,7 @@ import http from 'node:http';
 import path from 'node:path';
 
 import { ADMIN_PASSCODE, DEFAULT_ADMIN_PASSCODE, IS_PRODUCTION, PORT } from './config.js';
-import { ROOT_DIR, ensureDirs } from './store.js';
+import { ROOT_DIR, db_, ensureDirs, storeReady } from './store.js';
 import api, { apiErrorHandler } from './app.js';
 
 const DIST_DIR = path.join(ROOT_DIR, 'dist');
@@ -52,6 +52,16 @@ async function attachFrontend() {
 
 async function start() {
   ensureDirs();
+  // Open the database before accepting traffic so the first visitor does not pay
+  // for the connection, and so a bad DATABASE_URL is obvious in the logs.
+  try {
+    await storeReady();
+    const { name, label, persistent } = db_.driver;
+    console.log(`  → store: ${label} (${name})${persistent ? '' : ' — in-memory: data does not survive a restart'}`);
+  } catch (error) {
+    console.error(`[7h] Store unavailable at startup: ${error.message}`);
+    console.error('     API requests will answer 503 until the database is reachable.');
+  }
   await attachFrontend();
   app.use(apiErrorHandler);
 

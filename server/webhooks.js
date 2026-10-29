@@ -608,3 +608,109 @@ export function notificationChannels() {
 export const notificationsConfigured = () => channelStatus().some((entry) => entry.live);
 
 export const getNotificationConfig = notificationConfig;
+
+/* ------------------------------------------------------------------ *
+ * The alert outbox
+ * ------------------------------------------------------------------ */
+
+/**
+ * Anything that failed is retried, not forgotten.
+ *
+ * A webhook that 500s, a Resend key that was rotated, a WhatsApp template that
+ * was not approved yet — all of those land on the console as `failed`. This
+ * sweep walks them oldest-first and tries again, which makes the Vercel cron in
+ * `vercel.json` the safety net behind every alert.
+ *
+ * Generation guards apply: an event is only retried while it is still under the
+ * attempt cap and at least `minAgeMs` has passed, so a sweep can never hammer a
+ * provider or duplicate a message that was merely slow.
+ */
+export async function retryFailedAlerts({
+  limit = 10,
+  maxAttempts = 5,
+  minAgeMs = 60_000,
+  now = Date.now(),
+} = {}) {
+  const db = db_.data;
+  const candidates = db.events
+    .filter((event) => event.status === 'failed')
+    .filter((event) => (event.attempts ?? 0) < maxAttempts)
+    .filter((event) => {
+      const last = new Date(event.lastAttemptAt ?? event.createdAt).getTime();
+      return Number.isNaN(last) || now - last >= minAgeMs;
+    })
+    .slice(0, limit);
+
+  const summary = { attempted: 0, delivered: 0, failed: 0, skipped: 0, results: [] };
+
+  for (const event of candidates) {
+    const retail = Boolean(event.payload?.retail) || String(event.orderId ?? '').startsWith('7H-SHOP-');
+    const order = retail
+      ? db.shop?.orders?.find((item) => item.id === event.orderId)
+      : db.orders.find((item) => item.id === event.orderId);
+
+    if (!order) {
+      summary.skipped += 1;
+      summary.results.push({ id: event.id, channel: event.channel, status: 'skipped', reason: 'order not found' });
+      continue;
+    }
+
+    summary.attempted += 1;
+    try {
+      let result;
+      if (event.channel === 'plant') {
+        const forward = await forwardOrderToPlant(order, order.plantPreference ?? 'mobineko', 'system');
+        result = forward.blocked
+          ? { status: 'blocked', error: 'Deposit not confirmed' }
+          : { status: forward.delivery?.status ?? 'delivered', error: forward.delivery?.error ?? null };
+        summary.results.push({ id: event.id, channel: event.channel, status: result.status });
+        if (result.status === 'delivered') summary.delivered += 1;
+        else summary.failed += 1;
+        continue;
+      }
+
+      result = retail
+        ? await deliverShopNotification(event.channel, order)
+        : await deliverNotification(event.channel, order);
+
+      if (event.payload?.receipt && retail) {
+        result = await emailShopReceipt(order);
+      }
+
+      applyDelivery(event.id, result);
+      summary.results.push({ id: event.id, channel: event.channel, status: result.status, error: result.error ?? null });
+      if (result.status === 'delivered') summary.delivered += 1;
+      else summary.failed += 1;
+    } catch (error) {
+      summary.failed += 1;
+      summary.results.push({ id: event.id, channel: event.channel, status: 'failed', error: error.message });
+    }
+  }
+
+  if (summary.attempted > 0) db_.save();
+  return summary;
+}
+
+/** Counts behind the console's alert panel. */
+export function alertOutboxSummary() {
+  const db = db_.data;
+  const counts = { delivered: 0, failed: 0, queued: 0, sending: 0, pending: 0, simulated: 0, blocked: 0, total: db.events.length };
+  for (const event of db.events) {
+    if (event.status === 'simulated') counts.simulated += 1;
+    else if (event.status in counts) counts[event.status] += 1;
+    else counts.queued += 1;
+  }
+  const failures = db.events
+    .filter((event) => event.status === 'failed')
+    .slice(0, 12)
+    .map((event) => ({
+      id: event.id,
+      channel: event.channel,
+      orderId: event.orderId,
+      attempts: event.attempts ?? 0,
+      error: event.error ?? 'Unknown error',
+      lastAttemptAt: event.lastAttemptAt ?? event.createdAt,
+      message: event.message,
+    }));
+  return { counts, failures, retryable: db.events.filter((event) => event.status === 'failed' && (event.attempts ?? 0) < 5).length };
+}

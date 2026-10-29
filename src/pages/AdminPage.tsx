@@ -7,6 +7,7 @@ import type { AdminOverview, Order, WebhookEvent } from '../types';
 import { Icon, type IconName } from '../components/ui/Icon';
 import { StatusPill } from '../components/ui/StatusPill';
 import { ShopPanel } from '../components/admin/ShopPanel';
+import { SystemPanel } from '../components/admin/SystemPanel';
 import { Logo } from '../components/ui/Logo';
 
 const channelIcon: Record<string, IconName> = {
@@ -624,6 +625,9 @@ export function AdminPage() {
             )}
           </section>
         </div>
+
+        {/* where the data lives, and whether alerts actually leave */}
+        <SystemPanel />
 
         {/* the retail shelf — a separate business from the pressing pipeline */}
         <ShopPanel />
