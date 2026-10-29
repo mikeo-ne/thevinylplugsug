@@ -10,6 +10,7 @@ import {
   sleeves,
   vinylTypes,
 } from '../lib/pricing';
+import { CONTACT, whatsappUrl } from '../lib/contact';
 
 // Sensible local defaults so the configurator paints instantly; the API config
 // takes over as soon as it lands (live FX rate + payment rails).
@@ -17,9 +18,10 @@ const fallback: CompanyConfig = {
   company: {
     name: '7H Music Group',
     tagline: 'Vinyl Production & Brokerage',
-    email: 'press@7hmusicgroup.com',
-    phone: '+256 700 411 700',
-    whatsapp: 'https://wa.me/256700411700',
+    email: CONTACT.email,
+    phone: CONTACT.phone,
+    whatsapp: whatsappUrl(),
+    whatsappNumber: CONTACT.whatsappNumber,
     location: 'Kampala, Uganda',
     hours: 'Mon–Sat · 09:00–19:00 EAT',
   },
@@ -44,7 +46,7 @@ const fallback: CompanyConfig = {
       description: 'Approve the prompt on your phone. Funds clear in under a minute.',
       currency: 'UGX',
       accountName: '7H MUSIC GROUP LTD',
-      accountNumber: '0772 411 700',
+      accountNumber: '0768 261 003',
       fields: ['payerPhone'],
     },
     {
@@ -54,7 +56,7 @@ const fallback: CompanyConfig = {
       description: 'Airtel wallet payments are confirmed by SMS within seconds.',
       currency: 'UGX',
       accountName: '7H MUSIC GROUP LTD',
-      accountNumber: '0701 411 700',
+      accountNumber: 'Issued on your invoice',
       fields: ['payerPhone'],
     },
     {
@@ -64,7 +66,7 @@ const fallback: CompanyConfig = {
       description: 'Pay by card or SWIFT transfer. Bank details are issued on the invoice.',
       currency: 'USD',
       accountName: '7H MUSIC GROUP LTD',
-      accountNumber: 'Stanbic Bank · 9030012345678',
+      accountNumber: 'Issued on the invoice',
       fields: [],
     },
   ],

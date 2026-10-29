@@ -3,6 +3,7 @@ import { Icon } from '../ui/Icon';
 import { Reveal } from '../ui/Reveal';
 import { useDraft } from '../../store/DraftContext';
 import { usd } from '../../lib/format';
+import { whatsappUrl } from '../../lib/contact';
 
 export function CtaBand() {
   const { quote } = useDraft();
@@ -49,7 +50,7 @@ export function CtaBand() {
                   />
                 </Link>
                 <a
-                  href="https://wa.me/256700411700"
+                  href={whatsappUrl()}
                   target="_blank"
                   rel="noreferrer"
                   className="inline-flex items-center justify-center gap-2 rounded-full border border-ink/25 px-6 py-4 text-sm font-medium text-ink transition-colors hover:border-ink/50 hover:bg-ink/[0.06]"

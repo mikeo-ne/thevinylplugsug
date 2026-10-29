@@ -3,6 +3,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { calculateQuote } from '../shared/pricing.js';
+import { COMPANY } from './config.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const ROOT_DIR = path.resolve(__dirname, '..');
@@ -189,7 +190,7 @@ function seedDemo(db) {
       id: 'evt_demo_3',
       orderId: demoTwoId,
       channel: 'email',
-      target: 'press@7hmusicgroup.com',
+      target: COMPANY.email,
       status: 'delivered',
       attempts: 1,
       httpStatus: 200,
@@ -201,7 +202,7 @@ function seedDemo(db) {
       id: 'evt_demo_4',
       orderId: demoTwoId,
       channel: 'whatsapp',
-      target: '+256 700 411 700 (Management)',
+      target: `${COMPANY.phone} (Management)`,
       status: 'queued',
       attempts: 0,
       httpStatus: null,

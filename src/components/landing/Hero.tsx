@@ -3,6 +3,7 @@ import { Icon } from '../ui/Icon';
 import { VinylDisc } from '../ui/VinylDisc';
 import { useDraft } from '../../store/DraftContext';
 import { usd, ugx } from '../../lib/format';
+import { whatsappUrl } from '../../lib/contact';
 import { useAnimatedNumber } from '../../hooks/useAnimatedNumber';
 
 const stats = [
@@ -67,7 +68,7 @@ export function Hero() {
                 />
               </a>
               <a
-                href="https://wa.me/256700411700"
+                href={whatsappUrl()}
                 target="_blank"
                 rel="noreferrer"
                 className="btn-ghost w-full sm:w-auto"

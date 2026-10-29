@@ -33,6 +33,7 @@ independent Kampala act — and to run the demo without a hitch.
 > https://thevinylplugsug.vercel.app
 >
 > Have a look and tell me what run size you're thinking. If the numbers work I can hold a plant slot.
+> WhatsApp me on +256 768 261 003, or the desk inbox is 7hmusicgroupug@gmail.com.
 
 > **First-contact version — for a label or an act you haven't worked with**
 >
@@ -89,7 +90,8 @@ A broker who is straight about the roadmap is more credible than one who isn't.
 ## 5. After the demo
 
 - Send the order ID screenshot plus the share card (`public/og-image.png`) so the thread keeps the
-  quote in front of them.
+  quote in front of them. In `/admin`, **Alert on WhatsApp** opens a prefilled brief you can forward
+  to management in one tap — no Cloud API needed.
 - Delete the demo order in `/admin` → reset demo data once they've seen it.
 - If they hesitate on price, re-run the configurator at 100 units — a $1.8k-ish entry point moves more
   first releases than a discount does.

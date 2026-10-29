@@ -19,8 +19,12 @@ export const notificationConfig = () => ({
   webhook: Boolean(process.env.NOTIFY_WEBHOOK_URL),
   plant: Boolean(process.env.PLANT_WEBHOOK_URL),
   emailTo: process.env.NOTIFY_EMAIL_TO ?? COMPANY.email,
-  emailFrom: process.env.NOTIFY_EMAIL_FROM ?? '7H Orders <orders@7hmusicgroup.com>',
-  whatsappTo: process.env.NOTIFY_WHATSAPP_TO ?? null,
+  // Resend only accepts a sender on a domain you have verified. `onboarding@resend.dev`
+  // works out of the box on their test tier (it can mail the account owner's address),
+  // so a single RESEND_API_KEY is enough to receive real alerts. Set NOTIFY_EMAIL_FROM
+  // to something on 7hmusicgroup.com once the domain is verified.
+  emailFrom: process.env.NOTIFY_EMAIL_FROM ?? '7H Music Group <onboarding@resend.dev>',
+  whatsappTo: process.env.NOTIFY_WHATSAPP_TO ?? COMPANY.whatsappNumber ?? null,
   plantName:
     PRESSING_PLANTS.find((plant) => plant.id === process.env.PLANT_WEBHOOK_PLANT)?.name ?? 'Pressing plant',
 });

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Reveal } from '../ui/Reveal';
 import { Icon } from '../ui/Icon';
+import { whatsappUrl } from '../../lib/contact';
 
 const faqs = [
   {
@@ -45,7 +46,7 @@ export function Faq() {
             business hours, EAT.
           </p>
           <a
-            href="https://wa.me/256700411700"
+            href={whatsappUrl()}
             target="_blank"
             rel="noreferrer"
             className="btn-ghost mt-7"

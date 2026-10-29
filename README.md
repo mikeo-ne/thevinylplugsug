@@ -149,6 +149,13 @@ session, in-memory).
 
 ---
 
+## Contact
+
+Client desk: **7hmusicgroupug@gmail.com** · **+256 768 261 003** (WhatsApp) · Kampala, Uganda,
+Mon–Sat 09:00–19:00 EAT. These live in `src/lib/contact.ts` (UI) and `server/config.js` (API) and can
+be overridden with `CONTACT_EMAIL` / `CONTACT_PHONE` / `CONTACT_WHATSAPP` — see
+[DEPLOYMENT.md](./DEPLOYMENT.md#environment-variables).
+
 ## Going to market
 
 [`PITCH.md`](./PITCH.md) holds the first-client kit: the WhatsApp message, a 5-minute demo script,

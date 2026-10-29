@@ -178,7 +178,7 @@ export async function emitOrderEvents(order) {
     makeEvent({
       orderId: order.id,
       channel: 'email',
-      target: 'press@7hmusicgroup.com · operations@7hmusicgroup.com',
+      target: `${COMPANY.email} · operations desk`,
       message: `Order sheet emailed for ${summary}`,
     }),
     makeEvent({
