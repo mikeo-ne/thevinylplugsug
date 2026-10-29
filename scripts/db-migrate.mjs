@@ -13,6 +13,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { postgresDriver, POSTGRES_TABLES } from '../server/db/postgres.js';
+import { postgresUrl } from '../server/db/index.js';
 import { normalizeDoc } from '../server/db/document.js';
 
 const args = process.argv.slice(2);
@@ -22,7 +23,8 @@ const valueOf = (name) => {
   return index >= 0 ? args[index + 1] : null;
 };
 
-const url = process.env.DATABASE_URL;
+const configured = postgresUrl();
+const url = configured?.url ?? null;
 if (!url) {
   console.error('DATABASE_URL is not set. Point it at a Postgres database, e.g.');
   console.error('  DATABASE_URL=postgres://user:pass@host/db?sslmode=require npm run db:migrate');
@@ -43,7 +45,7 @@ const host = (() => {
 try {
   if (flag('--check', '--test')) {
     const health = await driver.health();
-    console.log(`→ ${host}`);
+    console.log(`→ ${host} (from ${configured.variable})`);
     if (!health.ok) {
       console.error(`✗ ${health.error}`);
       process.exit(1);

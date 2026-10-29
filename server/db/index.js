@@ -5,6 +5,8 @@
  * preference:
  *
  *   DATABASE_URL=postgres://…            → PostgreSQL (Neon, Supabase, Vercel, RDS)
+ *   POSTGRES_URL / POSTGRES_PRISMA_URL /  → the same, for the names the Vercel
+ *   POSTGRES_URL_NON_POOLING                Neon integration injects
  *   KV_REST_API_URL + KV_REST_API_TOKEN  → Upstash Redis / Vercel KV
  *   UPSTASH_REDIS_REST_URL + …_TOKEN     → the same, under Upstash's own names
  *   nothing                              → the local JSON file (development)
@@ -19,11 +21,27 @@ import { redisDriver } from './redis.js';
 
 export const DRIVER_PRIORITY = ['postgres', 'redis', 'file'];
 
+/** The connection-string names we accept, best first. */
+export const POSTGRES_URL_VARS = [
+  'DATABASE_URL',
+  'POSTGRES_URL',
+  'POSTGRES_PRISMA_URL',
+  'POSTGRES_URL_NON_POOLING',
+];
+
+export function postgresUrl(env = process.env) {
+  for (const key of POSTGRES_URL_VARS) {
+    if (env[key]) return { url: env[key], variable: key };
+  }
+  return null;
+}
+
 export function describeDrivers(env = process.env) {
+  const pg = postgresUrl(env);
   return {
     postgres: {
-      configured: Boolean(env.DATABASE_URL),
-      variable: 'DATABASE_URL',
+      configured: Boolean(pg),
+      variable: pg?.variable ?? 'DATABASE_URL',
       persistent: true,
     },
     redis: {
@@ -42,8 +60,9 @@ function redisConfig(env) {
 }
 
 export function createDriver({ env = process.env, file, dataDir, overrides = {} } = {}) {
-  if (env.DATABASE_URL && !overrides.forceFile) {
-    return postgresDriver({ url: env.DATABASE_URL, ...overrides.postgres });
+  const pg = postgresUrl(env);
+  if (pg && !overrides.forceFile) {
+    return postgresDriver({ url: pg.url, variable: pg.variable, ...overrides.postgres });
   }
 
   const redis = redisConfig(env);

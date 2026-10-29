@@ -348,6 +348,8 @@ async function testFileAndSelection() {
 
   const postgresChoice = createDriver({ env: { DATABASE_URL: 'postgres://user:pw@host/db' } });
   check('DATABASE_URL selects Postgres', postgresChoice.name === 'postgres');
+  const neonChoice = createDriver({ env: { POSTGRES_URL: 'postgres://user:pw@host/db' }, file: 'x' });
+  check('the Vercel Neon integration’s POSTGRES_URL also selects Postgres', neonChoice.name === 'postgres');
   const redisChoice = createDriver({ env: { KV_REST_API_URL: 'https://x', KV_REST_API_TOKEN: 't' }, file: 'x' });
   check('Vercel KV variables select Redis', redisChoice.name === 'redis');
   const fallback = createDriver({ env: {}, file: path.join(dir, 'db.json'), dataDir: dir });
