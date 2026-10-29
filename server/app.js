@@ -157,8 +157,16 @@ api.get('/api/files/:id/download', (req, res) => {
  * Public config + quoting
  * ------------------------------------------------------------------ */
 
-api.get('/api/health', (_req, res) => {
-  res.json({ ok: true, service: '7h-vinyl-api', time: new Date().toISOString() });
+api.get('/api/health', (req, res) => {
+  // `path`/`query` make it obvious whether a proxy or rewrite mangled the URL.
+  res.json({
+    ok: true,
+    service: '7h-vinyl-api',
+    time: new Date().toISOString(),
+    runtime: process.env.VERCEL ? 'vercel' : 'node',
+    path: req.path,
+    query: Object.keys(req.query),
+  });
 });
 
 api.get('/api/config', (_req, res) => {
