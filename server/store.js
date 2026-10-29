@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { calculateQuote } from '../shared/pricing.js';
+import { DEFAULT_FX_UGX_PER_USD, calculateQuote } from '../shared/pricing.js';
 import { COMPANY } from './config.js';
 import { createDriver } from './db/index.js';
 import { clone, emptyDoc, normalizeDoc } from './db/document.js';
@@ -45,7 +45,7 @@ export function ensureDirs() {
 }
 
 const demoQuote = (configuration) => {
-  const quote = calculateQuote({ ...configuration, fxRate: 3750 });
+  const quote = calculateQuote({ ...configuration, fxRate: DEFAULT_FX_UGX_PER_USD });
   return {
     vinylType: quote.vinylType,
     sleeve: quote.sleeve,

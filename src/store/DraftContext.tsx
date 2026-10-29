@@ -1,6 +1,13 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { DraftConfiguration, DraftFiles, DraftPayment, ClientDetails } from '../types';
-import { DEFAULT_CONFIGURATION, defaultPlantId, plantSupportsQuantity, plants, quoteFor } from '../lib/pricing';
+import {
+  DEFAULT_CONFIGURATION,
+  defaultPlantId,
+  fallbackFxRate,
+  plantSupportsQuantity,
+  plants,
+  quoteFor,
+} from '../lib/pricing';
 import { useConfig } from '../hooks/useConfig';
 
 const STORAGE_KEY = '7h-draft-v1';
@@ -148,7 +155,7 @@ export function DraftProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const fxRate = config?.fxRate ?? 3750;
+  const fxRate = config?.fxRate ?? fallbackFxRate;
   const quote = useMemo(
     () => quoteFor(state.configuration, fxRate, state.plantPreference),
     [state.configuration, fxRate, state.plantPreference],

@@ -1,3 +1,4 @@
+import { DEFAULT_FX_UGX_PER_USD } from './pricing.js';
 /**
  * The record shop — what a fan actually buys.
  *
@@ -175,7 +176,7 @@ const clampQuantity = (value) => {
  * validates shape and quantity only — whether the records are actually on the
  * shelf is a server-side stock check at the moment of the order.
  */
-export function calculateShopOrder({ items = [], deliveryId, fxRate = 3750 } = {}) {
+export function calculateShopOrder({ items = [], deliveryId, fxRate = DEFAULT_FX_UGX_PER_USD } = {}) {
   const errors = [];
   const lines = [];
 

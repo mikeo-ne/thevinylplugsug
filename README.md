@@ -40,7 +40,7 @@ Copy `.env.example` if you want to override defaults locally.
 | Variable          | Default     | Purpose                                        |
 | ----------------- | ----------- | ---------------------------------------------- |
 | `PORT`            | `4173`      | HTTP port (standalone server)                  |
-| `FX_UGX_PER_USD`  | `3750`      | Indicative FX rate used on every quote         |
+| `FX_UGX_PER_USD`  | `4360`      | Indicative FX rate used on every quote         |
 | `ADMIN_PASSCODE`  | built-in demo code | Access code for the operations console — set your own before sharing the link |
 | `SESSION_SECRET`  | derived     | Signs stateless admin tokens — set in production |
 | `MAX_UPLOAD_MB`   | `80` (`4` on Vercel) | Per-file upload cap advertised to the client |
