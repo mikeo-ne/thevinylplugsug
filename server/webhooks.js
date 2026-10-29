@@ -2,11 +2,14 @@ import { db_, newId } from './store.js';
 import { COMPANY, PAYMENT_METHODS } from './config.js';
 import { describeConfiguration, PRESSING_PLANTS } from '../shared/pricing.js';
 import {
+  attachPlantPayloadFormatter,
   channelMode,
   channelStatus,
   deliverNotification,
   deliverPlantPayload,
+  emailPlantOrder,
   notificationConfig,
+  whatsappTemplateSample,
 } from './notifications.js';
 
 const CHANNELS = {
@@ -17,6 +20,9 @@ const CHANNELS = {
 };
 
 export const getChannelMeta = (channel) => CHANNELS[channel] ?? { label: channel, icon: 'bolt' };
+
+// notifications.js needs the plant text without importing this module back.
+attachPlantPayloadFormatter((order) => plantPayloadText(order));
 
 const paymentLabel = (methodId) =>
   PAYMENT_METHODS.find((method) => method.id === methodId)?.name ?? methodId;
@@ -94,6 +100,23 @@ Files:
 ${files || '   (pending upload)'}
 Notes:      ${order.client.notes || '—'}`;
 }
+
+/**
+ * Whether the plant hand-off runs on its own. Default ON: the moment a deposit is
+ * confirmed the production request is emailed to the plant (and POSTed to
+ * PLANT_WEBHOOK_URL if that is wired). Set PLANT_AUTO_FORWARD=false to go back to
+ * releasing orders by hand.
+ *
+ * PLANT_FORWARD_ON_ORDER=true releases the order as soon as it is submitted, for
+ * plants that only start the queue once paperwork lands.
+ */
+export const automationConfig = () => ({
+  autoForward: process.env.PLANT_AUTO_FORWARD !== 'false',
+  forwardOnOrder: process.env.PLANT_FORWARD_ON_ORDER === 'true',
+  plantEmail: notificationConfig().plantEmail,
+  plantWebhook: Boolean(process.env.PLANT_WEBHOOK_URL),
+  whatsappTemplate: whatsappTemplateSample(),
+});
 
 function pushEvent(event) {
   const db = db_.data;
@@ -252,23 +275,57 @@ export function reconcileEvents(now = Date.now()) {
   return changed;
 }
 
+/**
+ * Send the order to the pressing plant.
+ *
+ * Runs automatically (deposit confirmation, or order submission when
+ * PLANT_FORWARD_ON_ORDER is set) and doubles as the manual "Forward" action.
+ * Tries the plant's email inbox and its webhook in parallel — whichever is
+ * configured — and records one `plant` event with the combined result.
+ */
 export async function forwardOrderToPlant(order, plantId, actor = 'management') {
   const plant = PRESSING_PLANTS.find((item) => item.id === plantId) ?? PRESSING_PLANTS[0];
   order.plantPreference = plant.id;
-  order.status = 'forwarded';
-  order.forwardedAt = new Date().toISOString();
   order.plantPayload = buildPlantPayload(order);
 
-  const result = await deliverPlantPayload(order, plant.id);
+  const config = automationConfig();
+  const attempts = [];
+
+  if (config.plantEmail || process.env.RESEND_API_KEY) {
+    attempts.push(await emailPlantOrder(order, plant, plant.id));
+  }
+  if (process.env.PLANT_WEBHOOK_URL) {
+    attempts.push(await deliverPlantPayload(order, plant.id));
+  }
+
+  const attempted = attempts.length > 0;
+  const delivered = attempts.find((attempt) => attempt.status === 'delivered');
+  const failed = attempts.find((attempt) => attempt.status === 'failed');
+  const result = delivered ?? failed ?? attempts[0] ?? { status: 'simulated', mode: 'simulated', error: null };
+
+  const now = new Date().toISOString();
+  const sent = Boolean(delivered);
+  order.status = 'forwarded';
+  order.forwardedAt = now;
+  order.plantHandoff = {
+    plant: plant.id,
+    at: now,
+    mode: result.mode,
+    status: result.status,
+    by: actor,
+    error: result.error ?? null,
+  };
+
+  const label = sent
+    ? `Order ${order.id} emailed to ${plant.name}${process.env.PLANT_WEBHOOK_URL ? ' and pushed to their endpoint' : ''}.`
+    : attempted
+      ? `Hand-off to ${plant.name} failed — ${result.error ?? 'unknown error'}`
+      : `Order ${order.id} released to ${plant.name} — payload ready (no plant order address configured).`;
+
   const db = db_.data;
   const pending = db.events.find(
     (event) => event.orderId === order.id && event.channel === 'plant' && event.status !== 'delivered',
   );
-
-  const deliveredLabel =
-    result.status === 'delivered'
-      ? `Order ${order.id} pushed to the ${plant.name} endpoint with master + artwork links.`
-      : `Order ${order.id} released to ${plant.name} — payload ready for hand-off.`;
 
   if (pending) {
     pending.status = result.status;
@@ -276,39 +333,77 @@ export async function forwardOrderToPlant(order, plantId, actor = 'management') 
     pending.httpStatus = result.httpStatus ?? null;
     pending.attempts = (pending.attempts ?? 0) + 1;
     pending.error = result.error ?? null;
-    pending.deliveredAt = result.status === 'delivered' ? new Date().toISOString() : null;
-    pending.target = `${plant.name} · production intake`;
-    pending.message = deliveredLabel;
-    pending.payload = { plant: plant.id, orderId: order.id };
+    pending.deliveredAt = sent ? now : null;
+    pending.lastAttemptAt = now;
+    pending.target = plant.ordersEmail
+      ? `${plant.name} · ${plant.ordersEmail}`
+      : `${plant.name} · production intake`;
+    pending.message = label;
+    pending.payload = { plant: plant.id, orderId: order.id, automatic: actor === 'system' };
   } else {
     const event = makeEvent({
       orderId: order.id,
       channel: 'plant',
-      target: `${plant.name} · production intake`,
-      message: deliveredLabel,
-      payload: { plant: plant.id, orderId: order.id },
+      target: plant.ordersEmail ? `${plant.name} · ${plant.ordersEmail}` : `${plant.name} · production intake`,
+      message: label,
+      payload: { plant: plant.id, orderId: order.id, automatic: actor === 'system' },
     });
     pushEvent(event);
     applyDelivery(event.id, result);
   }
 
-  pushEvent(
-    makeEvent({
-      orderId: order.id,
-      channel: 'email',
-      target: order.client.email,
-      message: `Client notified: ${order.id} is now in production with ${plant.name}.`,
-      status: 'delivered',
-    }),
-  );
+  if (sent) {
+    pushEvent(
+      makeEvent({
+        orderId: order.id,
+        channel: 'email',
+        target: order.client.email,
+        message: `Client notified: ${order.id} is now in production with ${plant.name}.`,
+        status: 'delivered',
+      }),
+    );
+  }
 
   order.statusHistory = [
     ...(order.statusHistory ?? []),
-    { status: 'forwarded', at: new Date().toISOString(), by: actor, note: `Released to ${plant.name}` },
+    {
+      status: 'forwarded',
+      at: now,
+      by: actor,
+      note: sent
+        ? `Released to ${plant.name} automatically`
+        : `Released to ${plant.name} — hand-off pending`,
+    },
   ];
 
   db_.save();
-  return { order, plant };
+  return { order, plant, delivery: result };
+}
+
+/**
+ * Automatic release, called by the API. Safe to call more than once: an order
+ * already sitting at the plant is not sent twice.
+ */
+export async function autoForwardOrder(order, { trigger = 'deposit' } = {}) {
+  const config = automationConfig();
+  if (!config.autoForward) return { skipped: true, reason: 'PLANT_AUTO_FORWARD=false' };
+  if (order.plantHandoff && order.plantHandoff.status === 'delivered') {
+    return { skipped: true, reason: 'already released' };
+  }
+  const result = await forwardOrderToPlant(order, order.plantPreference ?? 'mobineko', 'system');
+  const db = db_.data;
+  db.events.unshift(
+    makeEvent({
+      orderId: order.id,
+      channel: 'slack',
+      target: 'Automation',
+      message: `Auto-release triggered by ${trigger} — ${order.id} → ${result.plant.name}.`,
+      status: 'delivered',
+      payload: { trigger, automatic: true },
+    }),
+  );
+  db_.save();
+  return result;
 }
 
 export async function retryEvent(eventId) {
@@ -317,6 +412,10 @@ export async function retryEvent(eventId) {
   if (!event) return null;
 
   const order = db.orders.find((item) => item.id === event.orderId);
+  if (event.channel === 'plant' && order) {
+    const result = await forwardOrderToPlant(order, order.plantPreference ?? 'mobineko', 'management');
+    return db_.data.events.find((item) => item.id === eventId) ?? result.order;
+  }
   if (event.mode === 'live' && order) {
     event.status = 'sending';
     event.attempts = (event.attempts ?? 0) + 1;
@@ -373,7 +472,7 @@ export function notificationChannels() {
     live: entry.live,
     mode: entry.live ? 'live' : 'simulated',
     detail: entry.detail,
-    ...(entry.channel === 'plant' ? { autoDeliver: false } : {}),
+    ...(entry.channel === 'plant' ? { autoDeliver: automationConfig().autoForward } : {}),
   }));
 }
 

@@ -1,4 +1,5 @@
 import { useId } from 'react';
+import { SleeveArt, sleeveById } from '../vinyl/sleeveArt';
 
 interface VinylDiscProps {
   size?: number;
@@ -8,6 +9,8 @@ interface VinylDiscProps {
   spinning?: boolean;
   accent?: string;
   variant?: 'colored' | 'standard' | 'seven';
+  /** Sleeve design id — printed on the centre label (classic-series artwork). */
+  art?: string;
 }
 
 /**
@@ -22,12 +25,14 @@ export function VinylDisc({
   spinning = true,
   accent = '#CCFF00',
   variant = 'colored',
+  art,
 }: VinylDiscProps) {
   const grooves = Array.from({ length: 12 }, (_, index) => 34 + index * 4.9);
   const isSeven = variant === 'seven';
   const labelRadius = isSeven ? 30 : 32;
   const uid = useId().replace(/[^a-zA-Z0-9]/g, '');
   const id = `vinyl-${variant}-${uid}`;
+  const design = art ? sleeveById(art) : null;
 
   return (
     <div
@@ -61,6 +66,9 @@ export function VinylDisc({
             <stop offset="0%" stopColor="#ffffff" stopOpacity="0.2" />
             <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
           </radialGradient>
+          <clipPath id={`${id}-label`}>
+            <circle cx="100" cy="100" r={labelRadius} />
+          </clipPath>
         </defs>
 
         <circle cx="100" cy="100" r="98" fill={`url(#${id}-body)`} />
@@ -81,14 +89,29 @@ export function VinylDisc({
         <circle cx="100" cy="100" r="97" fill={`url(#${id}-sheen)`} />
         <circle cx="100" cy="100" r="97" fill={`url(#${id}-glow)`} />
 
-        <circle
-          cx="100"
-          cy="100"
-          r={labelRadius}
-          fill={accent}
-          stroke="rgba(0,0,0,0.25)"
-          strokeWidth="0.5"
-        />
+        {design ? (
+          <g clipPath={`url(#${id}-label)`}>
+            <svg
+              x={100 - labelRadius}
+              y={100 - labelRadius}
+              width={labelRadius * 2}
+              height={labelRadius * 2}
+              viewBox="0 34 300 300"
+              preserveAspectRatio="xMidYMid slice"
+            >
+              <SleeveArt uid={`${id}-lab`} design={design} compact />
+            </svg>
+          </g>
+        ) : (
+          <circle
+            cx="100"
+            cy="100"
+            r={labelRadius}
+            fill={accent}
+            stroke="rgba(0,0,0,0.25)"
+            strokeWidth="0.5"
+          />
+        )}
         <circle
           cx="100"
           cy="100"
@@ -98,6 +121,7 @@ export function VinylDisc({
           strokeWidth="0.5"
         />
 
+        {!design && (
         <text
           x="100"
           y={sublabel ? 98 : 104}
@@ -110,7 +134,8 @@ export function VinylDisc({
         >
           {label}
         </text>
-        {sublabel && (
+        )}
+        {!design && sublabel && (
           <text
             x="100"
             y="106"

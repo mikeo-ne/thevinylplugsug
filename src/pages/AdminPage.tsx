@@ -188,10 +188,11 @@ export function AdminPage() {
               </span>
             </div>
             <h1 className="display mt-2 text-[clamp(1.6rem,3vw,2.2rem)] font-semibold">
-              Order &amp; webhook simulator
+              Order pipeline
             </h1>
             <p className="mt-1.5 text-[12px] text-muted">
-              Every client submission fans out to Slack, email, WhatsApp and the pressing plant.
+              Every submission alerts the desk, and the production request goes to the plant{' '}
+              {overview?.automation?.autoForward ? 'on deposit confirmation — automatically' : 'by hand (auto-forward is off)'}.
               {lastSync && <> Synced {relativeTime(lastSync.toISOString())}.</>}
             </p>
           </div>
@@ -223,6 +224,38 @@ export function AdminPage() {
             </button>
           </div>
         </div>
+
+        {overview?.automation && (
+          <div className="mb-5 grid gap-2 sm:grid-cols-3">
+            <PipelineChip
+              title="Desk alerts"
+              ok={Boolean(overview.notifications?.configured)}
+              detail={
+                overview.notifications?.configured
+                  ? 'Email / WhatsApp fire on every order'
+                  : 'Add RESEND_API_KEY or WHATSAPP_TOKEN'
+              }
+            />
+            <PipelineChip
+              title="Plant hand-off"
+              ok={Boolean(overview.automation.plantEmail) && overview.automation.autoForward}
+              detail={
+                overview.automation.plantEmail
+                  ? `Auto-emailed ${overview.automation.autoForward ? 'on deposit' : '(auto-forward off)'}`
+                  : 'Set PLANT_MOBINEKO_EMAIL + RESEND_API_KEY'
+              }
+            />
+            <PipelineChip
+              title="WhatsApp template"
+              ok={Boolean(overview.notifications?.channels?.find((c) => c.channel === 'whatsapp')?.live)}
+              detail={
+                overview.notifications?.channels?.find((c) => c.channel === 'whatsapp')?.live
+                  ? `${overview.automation.whatsappTemplate?.name ?? 'new_vinyl_order'} template`
+                  : 'Meta Cloud API not configured'
+              }
+            />
+          </div>
+        )}
 
         {overview && !overview.notifications?.configured && (
           <div className="mb-5 rounded-xl border border-amber-400/25 bg-amber-400/[0.06] px-4 py-3.5">
@@ -533,6 +566,20 @@ export function AdminPage() {
                     </button>
                   </div>
 
+                  {selected.plantHandoff && (
+                    <p className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10.5px] text-muted">
+                      <span className="uppercase tracking-[0.14em]">Plant hand-off</span>
+                      <span className={selected.plantHandoff.status === 'delivered' ? 'text-lime' : 'text-amber-300'}>
+                        {selected.plantHandoff.status}
+                      </span>
+                      <span>· {selected.plantHandoff.by === 'system' ? 'automatic' : 'manual'}</span>
+                      <span>· {dateTime(selected.plantHandoff.at)}</span>
+                      {selected.plantHandoff.error && (
+                        <span className="text-red-300">· {selected.plantHandoff.error}</span>
+                      )}
+                    </p>
+                  )}
+
                   <div className="mt-4">
                     <button
                       type="button"
@@ -768,6 +815,28 @@ function LoginScreen({ onSuccess }: { onSuccess: (token: string) => void }) {
         </p>
       </div>
     </main>
+  );
+}
+
+function PipelineChip({ title, ok, detail }: { title: string; ok: boolean; detail: string }) {
+  return (
+    <div
+      className={`rounded-xl border px-3.5 py-3 ${
+        ok ? 'border-lime/25 bg-lime/[0.05]' : 'border-white/[0.08] bg-white/[0.02]'
+      }`}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">{title}</span>
+        <span
+          className={`rounded-full px-1.5 py-0.5 text-[8.5px] font-semibold uppercase tracking-[0.12em] ${
+            ok ? 'bg-lime text-ink' : 'bg-white/10 text-muted'
+          }`}
+        >
+          {ok ? 'auto' : 'off'}
+        </span>
+      </div>
+      <p className="mt-1.5 text-[11px] leading-snug text-muted">{detail}</p>
+    </div>
   );
 }
 

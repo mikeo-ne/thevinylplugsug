@@ -109,6 +109,7 @@ export function Hero() {
                 size={isSingle ? 340 : 460}
                 label="7H"
                 sublabel="VINYL"
+                art={isSingle ? 'ekitibwa' : configuration.vinylTypeId === 'lp_standard' ? 'nalubaale' : 'amaka'}
                 variant={isSingle ? 'seven' : configuration.vinylTypeId === 'lp_standard' ? 'standard' : 'colored'}
               />
             </div>

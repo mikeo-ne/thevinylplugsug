@@ -12,12 +12,21 @@ import { describeConfiguration, PRESSING_PLANTS } from '../shared/pricing.js';
 
 const REQUEST_TIMEOUT = 8000;
 
+// Overridable so the test harness (and a corporate proxy) can point at a local
+// sink instead of the real APIs.
+const RESEND_URL = process.env.RESEND_BASE_URL ?? 'https://api.resend.com/emails';
+const WHATSAPP_GRAPH_URL = process.env.WHATSAPP_GRAPH_URL ?? 'https://graph.facebook.com/v21.0';
+
 export const notificationConfig = () => ({
   slack: Boolean(process.env.SLACK_WEBHOOK_URL),
   email: Boolean(process.env.RESEND_API_KEY),
   whatsapp: Boolean(process.env.WHATSAPP_TOKEN && process.env.WHATSAPP_PHONE_ID),
   webhook: Boolean(process.env.NOTIFY_WEBHOOK_URL),
   plant: Boolean(process.env.PLANT_WEBHOOK_URL),
+  plantEmail: Boolean(
+    (process.env.PLANT_MOBINEKO_EMAIL || process.env.PLANT_GREENLAKES_EMAIL || process.env.PLANT_ORDERS_EMAIL) &&
+      process.env.RESEND_API_KEY,
+  ),
   emailTo: process.env.NOTIFY_EMAIL_TO ?? COMPANY.email,
   // Resend only accepts a sender on a domain you have verified. `onboarding@resend.dev`
   // works out of the box on their test tier (it can mail the account owner's address),
@@ -25,6 +34,10 @@ export const notificationConfig = () => ({
   // to something on 7hmusicgroup.com once the domain is verified.
   emailFrom: process.env.NOTIFY_EMAIL_FROM ?? '7H Music Group <onboarding@resend.dev>',
   whatsappTo: process.env.NOTIFY_WHATSAPP_TO ?? COMPANY.whatsappNumber ?? null,
+  // Outside a 24-hour customer window Meta only accepts pre-approved templates.
+  // Default matches the sample template documented in DEPLOYMENT.md.
+  whatsappTemplate: process.env.WHATSAPP_TEMPLATE_NAME ?? 'new_vinyl_order',
+  whatsappLang: process.env.WHATSAPP_TEMPLATE_LANG ?? 'en_US',
   plantName:
     PRESSING_PLANTS.find((plant) => plant.id === process.env.PLANT_WEBHOOK_PLANT)?.name ?? 'Pressing plant',
 });
@@ -193,7 +206,7 @@ async function deliverEmail(order) {
   const config = notificationConfig();
   const { summary, text, html } = buildOrderNotification(order);
   return postJson(
-    'https://api.resend.com/emails',
+    RESEND_URL,
     {
       from: config.emailFrom,
       to: config.emailTo.split(',').map((address) => address.trim()).filter(Boolean),
@@ -206,25 +219,96 @@ async function deliverEmail(order) {
   );
 }
 
+/**
+ * WhatsApp delivery.
+ *
+ * Business-initiated messages outside a 24-hour customer window must be a
+ * pre-approved template, so that is attempted first. If Meta rejects the
+ * template (not approved yet, wrong name) the plain-text message is tried, which
+ * succeeds inside an open window — e.g. right after management messaged the desk.
+ * The error from the template attempt is preserved so the console can show it.
+ */
 async function deliverWhatsApp(order) {
   const token = process.env.WHATSAPP_TOKEN;
   const phoneId = process.env.WHATSAPP_PHONE_ID;
-  const to = notificationConfig().whatsappTo;
+  const config = notificationConfig();
+  const to = config.whatsappTo;
   if (!token || !phoneId) throw new Error('WHATSAPP_TOKEN / WHATSAPP_PHONE_ID are not set');
   if (!to) throw new Error('NOTIFY_WHATSAPP_TO is not set');
 
+  const headers = { authorization: `Bearer ${token}` };
+  const url = `${WHATSAPP_GRAPH_URL}/${phoneId}/messages`;
+  const recipient = to.replace(/[^0-9]/g, '');
   const { summary, text } = buildOrderNotification(order);
-  return postJson(
-    `https://graph.facebook.com/v21.0/${phoneId}/messages`,
-    {
-      messaging_product: 'whatsapp',
-      recipient_type: 'individual',
-      to: to.replace(/[^0-9]/g, ''),
-      type: 'text',
-      text: { preview_url: false, body: `${summary}\n\n${text.slice(0, 3200)}` },
+  const template = whatsappTemplatePayload(order, config);
+
+  try {
+    return await postJson(url, { ...template, to: recipient }, headers);
+  } catch (templateError) {
+    try {
+      return await postJson(
+        url,
+        {
+          messaging_product: 'whatsapp',
+          recipient_type: 'individual',
+          to: recipient,
+          type: 'text',
+          text: { preview_url: false, body: `${summary}\n\n${text.slice(0, 3200)}` },
+        },
+        headers,
+      );
+    } catch (textError) {
+      throw new Error(
+        `template "${config.whatsappTemplate}": ${templateError.message}; text fallback: ${textError.message}`,
+      );
+    }
+  }
+}
+
+/**
+ * The template message body. Parameters map 1:1 onto the approved template —
+ * see DEPLOYMENT.md → "WhatsApp template" for the exact sample text to submit.
+ */
+export function whatsappTemplatePayload(order, config = notificationConfig()) {
+  const describe = describeConfiguration(order.configuration);
+  return {
+    messaging_product: 'whatsapp',
+    type: 'template',
+    template: {
+      name: config.whatsappTemplate,
+      language: { code: config.whatsappLang },
+      components: [
+        {
+          type: 'body',
+          parameters: [
+            { type: 'text', text: order.id },
+            { type: 'text', text: order.client.name },
+            { type: 'text', text: `${describe.quantity} × ${describe.vinyl}` },
+            { type: 'text', text: money(order.quote.total) },
+            { type: 'text', text: money(order.quote.deposit) },
+          ],
+        },
+      ],
     },
-    { authorization: `Bearer ${token}` },
-  );
+  };
+}
+
+/** The sample body to submit to Meta so the template matches these parameters. */
+export function whatsappTemplateSample() {
+  return {
+    name: notificationConfig().whatsappTemplate,
+    language: notificationConfig().whatsappLang,
+    category: 'UTILITY',
+    body: [
+      'New 7H vinyl order {{1}}',
+      'Artist: {{2}}',
+      'Spec: {{3}}',
+      'Turnkey total: {{4}}',
+      'Deposit due: {{5}}',
+      'Open the operations console to confirm the deposit and release the plant order.',
+    ].join('\n'),
+    parameters: 5,
+  };
 }
 
 async function deliverGenericWebhook(order, channel) {
@@ -273,6 +357,127 @@ export async function deliverNotification(channel, order) {
     const message = error?.name === 'AbortError' ? 'Request timed out' : error.message;
     return { status: 'failed', mode: 'live', httpStatus: null, error: message };
   }
+}
+
+/**
+ * Email the production request to the pressing plant.
+ *
+ * This is the automated hand-off: no one has to retype an order into the plant's
+ * inbox. Requires RESEND_API_KEY and the plant's order address
+ * (`PLANT_MOBINEKO_EMAIL` / `PLANT_GREENLAKES_EMAIL`, or `PLANT_ORDERS_EMAIL` as a
+ * catch-all). File links are absolute so the plant can download masters directly.
+ */
+export async function emailPlantOrder(order, plant, plantId) {
+  const apiKey = process.env.RESEND_API_KEY;
+  const to = plant?.ordersEmail || process.env.PLANT_ORDERS_EMAIL || null;
+  if (!apiKey) return { status: 'simulated', mode: 'simulated', error: 'RESEND_API_KEY is not set' };
+  if (!to) {
+    return {
+      status: 'simulated',
+      mode: 'simulated',
+      error: `No order address for ${plant?.name ?? plantId} — set PLANT_MOBINEKO_EMAIL / PLANT_GREENLAKES_EMAIL`,
+    };
+  }
+
+  const base = (process.env.PUBLIC_BASE_URL ?? 'https://thevinylplugsug.vercel.app').replace(/\/$/, '');
+  const payload = order.plantPayload ?? null;
+  const files = [...(order.files?.audio ?? []), ...(order.files?.artwork ?? [])];
+  const describe = describeConfiguration(order.configuration);
+  const config = notificationConfig();
+
+  const text = [
+    `PRODUCTION REQUEST — ${order.id}`,
+    ``,
+    plantPayloadTextOf(order),
+    ``,
+    `Downloads (valid for this order):`,
+    ...files.map((file) => `  ${file.kind.toUpperCase()}: ${base}/api/files/${file.id}/download`),
+    order.files?.audioLink ? `  Master link: ${order.files.audioLink}` : null,
+    order.files?.artworkLink ? `  Artwork link: ${order.files.artworkLink}` : null,
+    ``,
+    `Reply to: ${COMPANY.email}`,
+  ]
+    .filter((line) => line !== null)
+    .join('\n');
+
+  const rows = [
+    ['Order', order.id],
+    ['Artist / Label', order.client.name],
+    ['Format', `${describe.quantity} × ${describe.vinyl}`],
+    ['Packaging', describe.sleeve],
+    ['Turnaround', describe.turnaround ?? '—'],
+    ['Deliver to', `${order.client.deliveryAddress}, ${order.client.deliveryCity}, ${order.client.country}`],
+    ['Deposit', `${money(order.quote.deposit)} · ${paymentLabel(order.payment.method)} · ${order.payment.status}`],
+    ['Notes', order.client.notes || '—'],
+  ]
+    .map(
+      ([label, value]) =>
+        `<tr><td style="padding:6px 12px 6px 0;color:#8a8a82;font-size:12px;white-space:nowrap">${label}</td><td style="padding:6px 0;color:#121212;font-size:13px">${value}</td></tr>`,
+    )
+    .join('');
+
+  const links = files
+    .map(
+      (file) =>
+        `<li style="margin:4px 0"><a href="${base}/api/files/${file.id}/download" style="color:#0a7a3d">${file.originalName}</a> <span style="color:#8a8a82">(${file.kind})</span></li>`,
+    )
+    .join('');
+
+  const html = `
+  <div style="font-family:Inter,Helvetica,Arial,sans-serif;background:#f6f6f2;padding:24px">
+    <div style="max-width:600px;margin:0 auto;background:#fff;border-radius:14px;overflow:hidden;border:1px solid #e6e6df">
+      <div style="background:#121212;padding:20px 24px">
+        <div style="color:#CCFF00;font-size:11px;letter-spacing:2px;text-transform:uppercase">Production request</div>
+        <div style="color:#fff;font-size:19px;font-weight:600;margin-top:6px">${order.id} — ${order.client.name}</div>
+        <div style="color:#a8a8a0;font-size:12px;margin-top:4px">Issued by 7H Music Group on deposit confirmation</div>
+      </div>
+      <div style="padding:20px 24px">
+        <table style="border-collapse:collapse;width:100%">${rows}</table>
+        <div style="margin-top:18px;font-size:13px;font-weight:600;color:#121212">Master &amp; artwork</div>
+        <ul style="padding-left:18px;margin:8px 0 0;font-size:12.5px">${links || '<li>Pending upload</li>'}</ul>
+        <p style="margin:18px 0 0;font-size:12px;color:#8a8a82">
+          Quote the order number in all correspondence. Reply to ${COMPANY.email}.
+        </p>
+      </div>
+    </div>
+  </div>`;
+
+  try {
+    const result = await postJson(
+      RESEND_URL,
+      {
+        from: config.emailFrom,
+        to: [to],
+        // Keep a copy on the desk inbox so a plant reply can never go unnoticed.
+        bcc: config.emailTo.split(',').map((address) => address.trim()).filter(Boolean),
+        subject: `Production request ${order.id} — ${order.client.name} — ${describe.quantity} × ${describe.vinyl}`,
+        text,
+        html,
+        reply_to: COMPANY.email,
+      },
+      { authorization: `Bearer ${apiKey}` },
+    );
+    return {
+      status: 'delivered',
+      mode: 'live',
+      httpStatus: result.httpStatus,
+      error: null,
+      deliveredAt: new Date().toISOString(),
+    };
+  } catch (error) {
+    return {
+      status: 'failed',
+      mode: 'live',
+      httpStatus: null,
+      error: error?.name === 'AbortError' ? 'Request timed out' : error.message,
+    };
+  }
+}
+
+// Small indirection to avoid a circular import with webhooks.js.
+let plantPayloadTextOf = (order) => `${order.id} — ${order.client.name}`;
+export function attachPlantPayloadFormatter(formatter) {
+  plantPayloadTextOf = formatter;
 }
 
 /** Push the plant payload to a configured plant endpoint (manual forward). */
@@ -328,8 +533,12 @@ export function channelStatus() {
     },
     {
       channel: 'plant',
-      live: config.plant,
-      detail: config.plant ? 'Plant endpoint wired' : 'Manual forward only',
+      live: config.plantEmail || config.plant,
+      detail: config.plantEmail
+        ? `Auto-email → ${config.plantEmail}`
+        : config.plant
+          ? 'Plant endpoint wired'
+          : 'No plant order address yet',
     },
   ];
 }
