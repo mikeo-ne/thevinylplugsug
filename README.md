@@ -116,7 +116,30 @@ Four steps with validation and a sticky live summary:
 Generated order ID (`7H-2026-XXXX`), deposit instructions per rail, order summary, live status of
 the management alerts, and the next-steps timeline.
 
-### 5. Operations console (`/admin`, code from `ADMIN_PASSCODE`)
+### 5. Record shop (`/shop`, `/shop/order/:id`)
+
+The other door: fans buying records that already exist, one copy at a time.
+
+- **Shelf** — all five catalogue pressings with live stock, retail price in USD and UGX, the real
+  cover rendered on the jacket (same mockup as the samples), and a sold-out / “3 left” badge.
+- **Bag** — quantities per record, capped per order, kept in `localStorage` so a phone that reloads
+  mid-checkout keeps its bag. Prices always come from the API, never from the bag.
+- **Delivery** — studio pickup (free), Kampala courier ($3), upcountry Uganda ($6), East Africa
+  ($15) and the rest of the world ($34, tracked). Address fields only appear when the option needs
+  them.
+- **Payment** — MTN MoMo, Airtel Money or card/SWIFT. Nothing is charged on the page: the fan gets
+  a reference, pays, and the desk confirms.
+- **Order page** — `/shop/order/7H-SHOP-XXXX` is the whole customer-service surface: what they
+  bought, the total, the payment number and reference (copy buttons), the delivery address, and a
+  progress ladder from placed → packed → shipped → delivered.
+- **Console** — a Shop panel in `/admin`: revenue collected, unpaid orders, shelf counts, one-click
+  **mark paid**, status changes, WhatsApp/email shortcuts, and stock editing (cancelling an order
+  returns its records).
+
+Stock is checked and decremented in the same synchronous pass that accepts an order, so the last
+copy cannot be sold twice — a stale page that tries it gets a `409 out_of_stock` naming the record.
+
+### 6. Operations console (`/admin`, code from `ADMIN_PASSCODE`)
 
 The code is **never displayed** — not on the login screen, not in the server log. Six wrong attempts
 per IP lock the endpoint for ten minutes.
@@ -140,6 +163,12 @@ per IP lock the endpoint for ten minutes.
 | POST   | `/api/quote`                       | Authoritative server-side quote                 |
 | POST   | `/api/orders`                      | Create order (+ emits webhook fan-out)          |
 | GET    | `/api/orders/:id`                  | Client-facing order status + alert feed         |
+| GET    | `/api/shop`                        | Shop catalogue, live stock, delivery options    |
+| POST   | `/api/shop/orders`                 | Buy records (+ decrements stock, alerts desk)   |
+| GET    | `/api/shop/orders/:id`             | A fan's own order, by its reference             |
+| GET    | `/api/admin/shop`                  | Shop orders, stock and totals (auth)            |
+| PATCH  | `/api/admin/shop/orders/:id`       | Mark paid / move an order along (auth)          |
+| PATCH  | `/api/admin/shop/stock/:releaseId` | Set a record's stock count (auth)               |
 | POST   | `/api/uploads`                     | Multipart audio/artwork upload                  |
 | GET    | `/api/files/:id/download`          | Download a stored file                          |
 | POST   | `/api/admin/login`                 | Exchange passcode for a session token           |
@@ -230,21 +259,25 @@ Everything is optional — the app runs, and demos cleanly, with none of it set.
 api/index.js               # Vercel serverless entry (wraps the Express app)
 vercel.json                # build, SPA rewrite, cache headers, function limits
 shared/pricing.js          # single source of truth for catalogue + maths (client & server)
+shared/shop.js             # shop catalogue, delivery options, bag maths (client & server)
 server/
   app.js                   # Express router: all /api routes, uploads, validation
+  shop.js                  # retail stock, fan orders, shop-console logic
   index.js                 # standalone server: API + Vite middleware / static dist
   auth.js                  # stateless HMAC admin sessions
   store.js                 # JSON store, demo seed, order ID generator
   webhooks.js              # simulated alert fan-out, plant payload, forwarding
   config.js                # env config, company details, payment rails
 src/
-  pages/                   # Landing, Order, Success, Admin, NotFound
+  pages/                   # Landing, Shop, ShopOrder, Order, Success, Admin, NotFound
   components/landing/      # Hero, Configurator, Process, Plants, Faq, CtaBand, Marquee
   components/order/        # Stepper, FileDropzone, OrderSummary
   components/ui/           # Icon set, Toast, Reveal, VinylDisc, Logo, StatusPill
   store/DraftContext.tsx   # configuration + client draft (sessionStorage)
+  store/BagContext.tsx     # the shop bag (localStorage)
 scripts/smoke.mjs          # renders every route in jsdom, asserts no runtime errors
 scripts/flow.mjs           # drives the full order flow in jsdom and verifies the API/admin
+scripts/shop-check.mjs     # retail path: stock, totals, alerts, oversell, admin, restock
 scripts/serverless-check.mjs # boots api/index.js with VERCEL=1 and checks the endpoints
 .github/workflows/ci.yml   # typecheck → build → serverless checks → smoke → flow
 ```
@@ -255,15 +288,20 @@ scripts/serverless-check.mjs # boots api/index.js with VERCEL=1 and checks the e
 npm run typecheck          # tsc --noEmit
 npm run test:serverless    # self-contained: boots the Vercel handler on an isolated /tmp store
 npm run test:notifications # real-delivery harness: simulated → live → failed → retry → fan-out
+npm run test:shop          # shop: catalogue, checkout, stock, oversell, admin, cancellation
 node scripts/smoke.mjs     # route render smoke test (needs the app on :4173)
 node scripts/flow.mjs      # end-to-end order placement + admin verification (needs :4173)
 npm run test:e2e           # live end-to-end against production (or pass a URL)
-npm test                   # typecheck + all four suites
+npm test                   # typecheck + every suite
 ```
 
 ## Notes
 
-- Payments are **simulated**: no PSP is called. Deposits are confirmed manually in the console, and
+- Shop stock lives in the same JSON store as production orders, so it is per-instance on Vercel
+  (see [Deployment → limits](./DEPLOYMENT.md#3-what-happens-on-vercel-and-its-limits)). A sale
+  always emails the desk immediately, so no order is ever lost with the instance.
+- Payments are **simulated**: no PSP is called. Deposits and shop payments are confirmed manually in
+  the console, and
   the success screen shows rail-specific instructions (MoMo `*165*3#`, Airtel `*185*9#`, SWIFT).
 - Webhook deliveries are **real** as soon as credentials exist (see [Notifications](#notifications));
   without them they are simulated with staggered timers and clearly labelled `SIM` in the console.

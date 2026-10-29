@@ -90,6 +90,29 @@ is BCC'd on every plant email, so a reply always has a home; if a plant's inbox 
 address, that BCC is skipped (one mailbox, one copy). The subject line names the plant as well, so a
 forwarded thread is still obvious.
 
+### The record shop
+
+`/shop` sells the catalogue one record at a time — a different pipeline from a pressing order, and
+the console keeps them apart.
+
+| Variable | Default | Notes |
+| --- | --- | --- |
+| `SHOP_ORDERS_PER_MINUTE` | `12` | Per-IP ceiling on shop checkouts. Raise it for a launch, or for a load test |
+| `FX_UGX_PER_USD` | `3750` | Also prices the shop in UGX, so one rate keeps both doors consistent |
+
+- Retail prices and delivery fees live in `shared/shop.js` — one file, read by the page, the API and
+  the console. Edit it, deploy, done. Stock is *not* in the code: it starts at the opening count and
+  then lives in the store, managed from the console.
+- A sale decrements stock in the same synchronous pass that accepts the order, so the last copy
+  cannot be sold twice on one instance. A stale page that tries it gets `409 out_of_stock`.
+- Every sale emails the desk (with the buyer’s receipt BCC’d), sends the WhatsApp alert, and — when
+  configured — posts to the generic webhook as `shop.order.placed`.
+- **On Vercel the shop’s stock and orders live in `/tmp` like everything else**, so a cold start
+  re-seeds the opening counts and the order list resets. That is fine for a pitch and for a single
+  busy instance; before running real retail traffic, move the store to Postgres/Redis (see
+  [Going to real production storage](#going-to-real-production-storage)). The desk email on every
+  sale is what keeps an order from disappearing with the instance.
+
 ### Run sizes and the plant panel
 
 `shared/pricing.js` is the single source of truth for the seven run sizes (1, 25, 50, 100, 250,

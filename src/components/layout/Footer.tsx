@@ -27,6 +27,7 @@ export function Footer() {
           <div>
             <h3 className="mb-4 text-[11px] font-semibold uppercase tracking-[0.2em] text-bone">Explore</h3>
             <ul className="space-y-2.5 text-sm text-muted">
+              <li><Link className="transition-colors hover:text-lime" to="/shop">Buy records</Link></li>
               <li><a className="transition-colors hover:text-lime" href="/#configurator">Quote configurator</a></li>
               <li><a className="transition-colors hover:text-lime" href="/#process">How it works</a></li>
               <li><a className="transition-colors hover:text-lime" href="/#samples">Sample pressings</a></li>
@@ -39,6 +40,7 @@ export function Footer() {
             <h3 className="mb-4 text-[11px] font-semibold uppercase tracking-[0.2em] text-bone">Client desk</h3>
             <ul className="space-y-2.5 text-sm text-muted">
               <li><Link className="transition-colors hover:text-lime" to="/order">Start an order</Link></li>
+              <li><Link className="transition-colors hover:text-lime" to="/shop">Shop the catalogue</Link></li>
               <li><Link className="transition-colors hover:text-lime" to="/admin">Admin console</Link></li>
               <li><a className="transition-colors hover:text-lime" href={`mailto:${company.email}`}>File transfer help</a></li>
               <li><a className="transition-colors hover:text-lime" href={company.whatsapp}>WhatsApp desk</a></li>
@@ -72,7 +74,7 @@ export function Footer() {
         <div className="mt-14 flex flex-col gap-4 border-t border-white/[0.07] pt-6 text-[12px] text-muted sm:flex-row sm:items-center sm:justify-between">
           <p>© {new Date().getFullYear()} 7H Music Group Ltd. All rights reserved.</p>
           <p className="flex flex-wrap items-center gap-x-5 gap-y-2">
-            <span>Production terms: 50% deposit &amp; proof approval</span>
+            <span>Pressing terms: 50% deposit &amp; proof approval</span>
             <span className="hidden h-3 w-px bg-white/15 sm:block" />
             <span>Prices indicative · FX locked at invoice</span>
           </p>

@@ -4,6 +4,7 @@ import { Configurator } from '../components/landing/Configurator';
 import { Process } from '../components/landing/Process';
 import { Plants } from '../components/landing/Plants';
 import { VinylSamples } from '../components/landing/VinylSamples';
+import { ShopBand } from '../components/landing/ShopBand';
 import { Faq } from '../components/landing/Faq';
 import { CtaBand } from '../components/landing/CtaBand';
 
@@ -16,6 +17,7 @@ export function LandingPage() {
       <Process />
       <Plants />
       <VinylSamples />
+      <ShopBand />
       <Faq />
       <CtaBand />
     </main>

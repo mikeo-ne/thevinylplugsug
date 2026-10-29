@@ -8,7 +8,15 @@ import { createServer } from 'vite';
 
 const PORT = process.env.PORT ?? '4173';
 const BASE = `http://localhost:${PORT}`;
-const routes = ['/', '/order', '/order/NOPE-404', '/admin', '/does-not-exist'];
+const routes = [
+  '/',
+  '/shop',
+  '/shop/order/7H-SHOP-NOPE',
+  '/order',
+  '/order/NOPE-404',
+  '/admin',
+  '/does-not-exist',
+];
 
 const failures = [];
 

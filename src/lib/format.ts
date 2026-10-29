@@ -81,6 +81,8 @@ export const statusLabel = (status: string) =>
     failed: 'Failed',
     simulated: 'Simulated',
     awaiting_forward: 'Awaiting release',
+    placed: 'Placed',
+    packed: 'Packed',
   })[status] ?? status;
 
 export const statusTone = (status: string) => {
@@ -95,6 +97,7 @@ export const statusTone = (status: string) => {
     case 'pending':
     case 'queued':
     case 'sending':
+    case 'placed':
       return 'amber';
     case 'failed':
       return 'red';
@@ -102,6 +105,7 @@ export const statusTone = (status: string) => {
       return 'muted';
     case 'forwarded':
     case 'in_production':
+    case 'packed':
     case 'shipped':
       return 'sky';
     case 'cancelled':

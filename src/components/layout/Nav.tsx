@@ -3,11 +3,12 @@ import { Link, NavLink, useLocation } from 'react-router-dom';
 import { Logo } from '../ui/Logo';
 import { Icon } from '../ui/Icon';
 import { whatsappUrl } from '../../lib/contact';
+import { useBag } from '../../store/BagContext';
 
 const links = [
+  { label: 'Shop', to: '/shop' },
   { label: 'Configurator', to: '/#configurator' },
   { label: 'Process', to: '/#process' },
-  { label: 'Samples', to: '/#samples' },
   { label: 'Plants', to: '/#plants' },
   { label: 'FAQ', to: '/#faq' },
 ];
@@ -16,6 +17,7 @@ export function Nav() {
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
   const location = useLocation();
+  const { count } = useBag();
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 18);
@@ -53,9 +55,18 @@ export function Nav() {
               <NavLink
                 key={link.label}
                 to={link.to}
-                className="rounded-full px-3.5 py-2 text-[13px] font-medium text-muted transition-colors hover:text-bone"
+                className={({ isActive }) =>
+                  `rounded-full px-3.5 py-2 text-[13px] font-medium transition-colors ${
+                    isActive ? 'text-lime' : 'text-muted hover:text-bone'
+                  }`
+                }
               >
                 {link.label}
+                {link.to === '/shop' && count > 0 && (
+                  <span className="ml-1.5 inline-grid h-4 min-w-4 place-items-center rounded-full bg-lime px-1 text-[9px] font-bold text-ink">
+                    {count}
+                  </span>
+                )}
               </NavLink>
             ),
           )}
@@ -76,11 +87,23 @@ export function Nav() {
             href={whatsappUrl()}
             target="_blank"
             rel="noreferrer"
-            className="hidden items-center gap-2 rounded-full border border-white/12 px-4 py-2.5 text-[13px] font-medium text-bone transition-colors hover:border-lime/40 hover:text-lime md:inline-flex"
+            aria-label="Talk to us on WhatsApp"
+            className="hidden h-10 w-10 place-items-center rounded-full border border-white/12 text-bone transition-colors hover:border-lime/40 hover:text-lime md:grid"
           >
-            <Icon name="whatsapp" size={15} filled />
-            Talk to us
+            <Icon name="whatsapp" size={16} filled />
           </a>
+          <Link
+            to="/shop#checkout"
+            aria-label={`Your bag — ${count} record${count === 1 ? '' : 's'}`}
+            className="relative grid h-10 w-10 place-items-center rounded-full border border-white/12 text-bone transition-colors hover:border-lime/40 hover:text-lime"
+          >
+            <Icon name="music" size={16} />
+            {count > 0 && (
+              <span className="absolute -right-1 -top-1 grid h-[18px] min-w-[18px] place-items-center rounded-full bg-lime px-1 text-[9px] font-bold text-ink">
+                {count}
+              </span>
+            )}
+          </Link>
           <Link
             to="/order"
             className="inline-flex items-center gap-2 rounded-full bg-lime px-5 py-2.5 text-[13px] font-semibold text-ink transition-all hover:bg-lime-soft hover:shadow-[0_0_28px_rgba(204,255,0,0.35)]"
