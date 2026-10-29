@@ -6,8 +6,16 @@
  * commits to the pressing plant.
  */
 
-/** Indicative UGX/USD rate. Override with FX_UGX_PER_USD on the server. */
-export const DEFAULT_FX_UGX_PER_USD = 3750;
+/**
+ * USD → UGX rate used to show every local price.
+ *
+ * This is the number the business actually converts at: quotes, the 25% fee, the
+ * 50% deposit, the shop's shelf prices and the console totals all multiply by
+ * it, so it must sit at or above the street rate — a weaker shilling must never
+ * turn a quoted dollar price into a loss. Last reviewed 2026-10-29.
+ * Override with FX_UGX_PER_USD on the server (and in Vercel) without a deploy.
+ */
+export const DEFAULT_FX_UGX_PER_USD = 4360;
 
 export const MANAGEMENT_FEE_RATE = 0.25;
 export const DEPOSIT_RATE = 0.5;

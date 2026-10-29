@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { api, ApiError } from '../lib/api';
 import { usd, ugx } from '../lib/format';
+import { fallbackFxRate } from '../lib/pricing';
 import { whatsappUrl } from '../lib/contact';
 import { useBag } from '../store/BagContext';
 import { useToast } from '../components/ui/Toast';
@@ -80,7 +81,7 @@ export function ShopPage() {
   // Nothing in the bag, nothing to ship — don't quote a delivery fee for air.
   const shipping = detailed.length > 0 ? delivery?.priceUsd ?? 0 : 0;
   const total = subtotal + shipping;
-  const fxRate = shop?.fxRate ?? 3750;
+  const fxRate = shop?.fxRate ?? fallbackFxRate;
 
   const addToBag = (release: ShopRelease) => {
     const limit = Math.min(release.maxPerOrder, release.stock);

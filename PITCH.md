@@ -19,7 +19,7 @@ independent Kampala act — and to run the demo without a hitch.
 - [ ] Open the link once on **your own phone** first. WhatsApp caches previews; if an old one sticks,
       it clears on its own within a day (or re-scrape it in Slack's app settings).
 - [ ] Have the quote for their likely run ready — most Kampala independents start at 250 × 12" Colored
-      with a gatefold: **$3,712.50**, deposit **$1,856.25** (≈ UGX 6.96m at 3,750).
+      with a gatefold: **$3,712.50**, deposit **$1,856.25** (≈ UGX 8.09m at 4,360).
 
 ---
 

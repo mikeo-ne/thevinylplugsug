@@ -76,7 +76,7 @@ const server = spawn(process.execPath, [path.resolve('server/index.js')], {
     WHATSAPP_PHONE_ID: '1234567890',
     WHATSAPP_GRAPH_URL: `http://127.0.0.1:${SINK_PORT}/graph`,
     NOTIFY_WHATSAPP_TO: '256768261003',
-    FX_UGX_PER_USD: '3750',
+    FX_UGX_PER_USD: '4360',
     // This script places more orders in a minute than any human would.
     SHOP_ORDERS_PER_MINUTE: '999',
     PUBLIC_BASE_URL: 'https://example.test',
@@ -168,7 +168,7 @@ try {
       ),
     'MoMo, Airtel Money and card are all offered',
   );
-  check(shop.body.fxRate === 3750, 'UGX rate comes from the environment', String(shop.body.fxRate));
+  check(shop.body.fxRate === 4360, 'UGX rate comes from the environment', String(shop.body.fxRate));
 
   /* ------------------------------------------------------- console ---- */
   section('The console is reachable for shop management');
@@ -190,7 +190,7 @@ try {
   check(order.subtotal === 38 + 44, 'subtotal is the sum of the lines', `$${order.subtotal}`);
   check(order.shipping === 3, 'Kampala courier charged', `$${order.shipping}`);
   check(order.total === 85, 'total is subtotal + delivery', `$${order.total}`);
-  check(order.totals?.total?.ugx === 85 * 3750, 'UGX total at the configured rate', String(order.totals?.total?.ugx));
+  check(order.totals?.total?.ugx === 85 * 4360, 'UGX total at the configured rate', String(order.totals?.total?.ugx));
   check(order.status === 'placed', 'order starts as placed', String(order.status));
   check(order.payment?.status === 'pending', 'payment starts pending', String(order.payment?.status));
   check(Boolean(order.payment?.reference), 'mobile money reference issued', String(order.payment?.reference));

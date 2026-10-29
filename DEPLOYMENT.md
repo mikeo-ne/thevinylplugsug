@@ -35,7 +35,7 @@ Once `main` is up to date, any Vercel project connected to this repository deplo
 | ---------------- | -------- | ------------------------------------ | -------------------------------------------------- |
 | `ADMIN_PASSCODE` | **yes**  | `vinyl-ops-2027`                     | Change from the `7HADMIN` demo default             |
 | `SESSION_SECRET` | **yes**  | `openssl rand -hex 32`               | Signs admin session tokens (stateless, 8-hour TTL) |
-| `FX_UGX_PER_USD` | no       | `3750`                               | Indicative rate used across quotes                 |
+| `FX_UGX_PER_USD` | no       | `4360`                               | Indicative rate used across quotes                 |
 | `MAX_UPLOAD_MB`  | no       | `4`                                  | Defaults to 4 on Vercel, 80 elsewhere              |
 | `CONTACT_EMAIL`  | no       | `7hmusicgroupug@gmail.com`           | Shown in the footer, alerts and email replies      |
 | `CONTACT_PHONE`  | no       | `+256 768 261 003`                   | Displayed phone number                             |
@@ -63,6 +63,13 @@ openssl rand -hex 32
 ```
 
 Redeploy after changing env vars — Vercel does not restart functions automatically.
+
+**Keep `FX_UGX_PER_USD` current.** It is the rate every local price is multiplied by — the quote, the
+25% fee, the 50% deposit, the shop's UGX labels and the console totals. Set it at or just above the
+mid-market rate (Wise shows USD/UGX live) and re-check it monthly, or whenever the shilling moves;
+a stale rate is how a dollar quote quietly becomes a loss on a UGX invoice. It is currently
+**4,360** (reviewed 2026-10-29). Changing it needs no code change — but it does need a redeploy, or
+`npx vercel --prod` again if you edit it from the CLI.
 
 ### Automation — order → alerts → plant, no manual steps
 
@@ -107,7 +114,7 @@ the console keeps them apart.
 | Variable | Default | Notes |
 | --- | --- | --- |
 | `SHOP_ORDERS_PER_MINUTE` | `12` | Per-IP ceiling on shop checkouts. Raise it for a launch, or for a load test |
-| `FX_UGX_PER_USD` | `3750` | Also prices the shop in UGX, so one rate keeps both doors consistent |
+| `FX_UGX_PER_USD` | `4360` | Also prices the shop in UGX, so one rate keeps both doors consistent |
 
 - Retail prices and delivery fees live in `shared/shop.js` — one file, read by the page, the API and
   the console. Edit it, deploy, done. Stock is *not* in the code: it starts at the opening count and
