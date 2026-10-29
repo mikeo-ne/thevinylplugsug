@@ -37,6 +37,8 @@ import {
   emitTestEvent,
   forwardOrderToPlant,
   getChannelMeta,
+  notificationChannels,
+  notificationsConfigured,
   plantPayloadText,
   reconcileEvents,
   retryEvent,
@@ -229,7 +231,7 @@ function linkOrNull(value) {
   return raw;
 }
 
-api.post('/api/orders', (req, res) => {
+api.post('/api/orders', async (req, res) => {
   const ip = req.ip ?? 'unknown';
   if (orderRateLimited(ip)) {
     return res.status(429).json({ error: 'Too many submissions. Please try again in a minute.' });
@@ -354,9 +356,9 @@ api.post('/api/orders', (req, res) => {
   db.orders.unshift(order);
   db_.save();
 
-  emitOrderEvents(order);
   order.plantPayload = buildPlantPayload(order);
   db_.save();
+  await emitOrderEvents(order);
 
   res.status(201).json({
     order: {
@@ -493,10 +495,11 @@ api.get('/api/admin/overview', requireAdmin, (_req, res) => {
     orders: orders.map(decorateOrder),
     config: ADMIN_CONFIG,
     plants: PRESSING_PLANTS,
-    channels: ['slack', 'email', 'whatsapp', 'plant'].map((channel) => ({
-      channel,
-      ...getChannelMeta(channel),
-    })),
+    channels: notificationChannels(),
+    notifications: {
+      configured: notificationsConfigured(),
+      channels: notificationChannels(),
+    },
   });
 });
 
@@ -542,14 +545,14 @@ api.patch('/api/admin/orders/:id', requireAdmin, (req, res) => {
   res.json({ order: decorateOrder(order) });
 });
 
-api.post('/api/admin/orders/:id/forward', requireAdmin, (req, res) => {
+api.post('/api/admin/orders/:id/forward', requireAdmin, async (req, res) => {
   const db = db_.data;
   const order = db.orders.find((item) => item.id === req.params.id);
   if (!order) return res.status(404).json({ error: 'Order not found.' });
   const plantId = PRESSING_PLANTS.some((plant) => plant.id === req.body?.plantId)
     ? req.body.plantId
     : order.plantPreference ?? 'mobineko';
-  const { order: updated, plant } = forwardOrderToPlant(order, plantId);
+  const { order: updated, plant } = await forwardOrderToPlant(order, plantId);
   res.json({ order: decorateOrder(updated), plant });
 });
 
@@ -566,14 +569,14 @@ api.post('/api/admin/orders/:id/payment', requireAdmin, (req, res) => {
   res.json({ order: decorateOrder(order) });
 });
 
-api.post('/api/admin/events/:id/retry', requireAdmin, (req, res) => {
-  const event = retryEvent(req.params.id);
+api.post('/api/admin/events/:id/retry', requireAdmin, async (req, res) => {
+  const event = await retryEvent(req.params.id);
   if (!event) return res.status(404).json({ error: 'Event not found.' });
   res.json({ event });
 });
 
-api.post('/api/admin/events/test', requireAdmin, (_req, res) => {
-  res.status(201).json({ event: emitTestEvent() });
+api.post('/api/admin/events/test', requireAdmin, async (_req, res) => {
+  res.status(201).json({ event: await emitTestEvent() });
 });
 
 api.post('/api/admin/reset-demo', requireAdmin, (_req, res) => {

@@ -105,7 +105,9 @@ the management alerts, and the next-steps timeline.
   plant payload.
 - **Webhook alert log** — automatically fires on every order to Slack, email, WhatsApp and plant
   intake, with delivery states, retries, a manual “test alert”, and a demo reset. The console polls
-  every six seconds while the tab is visible.
+  every six seconds while the tab is visible. Each channel shows `LIVE` or `SIM`, and until real
+  credentials are set the console keeps an amber “alerts are simulated” banner — see
+  [Notifications](#notifications).
 
 ---
 
@@ -147,6 +149,30 @@ session, in-memory).
 
 ---
 
+## Notifications
+
+Alerts fire the moment an order is created. Channels are **env-gated and independent** — a channel
+delivers only when its variables are present; otherwise it stays `simulated` and the console says so.
+
+| Channel | Variables | Notes |
+| --- | --- | --- |
+| Slack | `SLACK_WEBHOOK_URL` | Incoming Webhook; rich blocks with client, package and money |
+| Email | `RESEND_API_KEY`, `NOTIFY_EMAIL_TO`, `NOTIFY_EMAIL_FROM` | Resend; HTML + plain-text order sheet |
+| WhatsApp | `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_ID`, `NOTIFY_WHATSAPP_TO` | Meta Cloud API; recipient must be opted in |
+| Umbrella webhook | `NOTIFY_WEBHOOK_URL` | One JSON POST per channel — Zapier / Make / n8n / your bot |
+| Plant forwarding | `PLANT_WEBHOOK_URL` (+ `PLANT_WEBHOOK_PLANT`, `PUBLIC_BASE_URL`) | Enables the admin “Forward to plant” action |
+
+Everything is optional — the app runs, and demos cleanly, with none of it set.
+
+- Deliveries time out after 8 s and never throw: a dead endpoint marks the event `failed` with the
+  error text in the log, and retry is one click away. Checkout is never blocked by an alert.
+- `PUBLIC_BASE_URL` makes uploaded-file links absolute inside the alert; set it in production.
+- Run `npm run test:notifications` to prove the whole path against a local HTTP sink — no
+  credentials required (simulated → live Slack → failed endpoint → retry → umbrella fan-out).
+- `npm run test:e2e` walks the real deployed site the way a client does (page → quote → upload →
+  checkout → success → console) and prints response times, so a slow deploy is caught before a
+  pitch. Pass a URL to point it elsewhere: `node scripts/e2e-live.mjs http://localhost:4173`.
+
 ## Project layout
 
 ```
@@ -177,21 +203,26 @@ scripts/serverless-check.mjs # boots api/index.js with VERCEL=1 and checks the e
 ```
 npm run typecheck          # tsc --noEmit
 npm run test:serverless    # self-contained: boots the Vercel handler on an isolated /tmp store
+npm run test:notifications # real-delivery harness: simulated → live → failed → retry → fan-out
 node scripts/smoke.mjs     # route render smoke test (needs the app on :4173)
 node scripts/flow.mjs      # end-to-end order placement + admin verification (needs :4173)
-npm test                   # typecheck + serverless checks
+npm run test:e2e           # live end-to-end against production (or pass a URL)
+npm test                   # typecheck + all four suites
 ```
 
 ## Notes
 
 - Payments are **simulated**: no PSP is called. Deposits are confirmed manually in the console, and
   the success screen shows rail-specific instructions (MoMo `*165*3#`, Airtel `*185*9#`, SWIFT).
-- Webhook “deliveries” are simulated locally with staggered timers; wire `server/webhooks.js` to
-  real Slack / Resend / WhatsApp Cloud API endpoints to go live.
+- Webhook deliveries are **real** as soon as credentials exist (see [Notifications](#notifications));
+  without them they are simulated with staggered timers and clearly labelled `SIM` in the console.
 - Rates and per-unit factory costs in `shared/pricing.js` are indicative and should be refreshed
   against plant quotes before invoicing.
 - `data/` and `uploads/` are git-ignored; the store seeds two demo orders on first boot.
 - On Vercel those directories move to `/tmp` (ephemeral). For persistent orders and files, follow
   the two-step storage swap in [DEPLOYMENT.md](./DEPLOYMENT.md#going-to-real-production-storage).
+- The share card at `public/og-image.png` (1200×630) drives link previews in WhatsApp, Slack and
+  X. Regenerate it with `npm run og-image` after changing the headline; the copy lives in
+  `scripts/build-og-image.sh`.
 - Admin sessions are HMAC-signed with `SESSION_SECRET` rather than stored server-side, so they
   survive across serverless instances; rotate the secret to invalidate every session.

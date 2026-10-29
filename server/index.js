@@ -30,7 +30,8 @@ async function attachFrontend() {
   const vite = await createViteServer({
     server: {
       middlewareMode: true,
-      hmr: { server },
+      // Vite 8: WebSocket/HMR transport is configured under `ws`.
+      ws: { server },
       allowedHosts: true,
     },
     appType: 'custom',
