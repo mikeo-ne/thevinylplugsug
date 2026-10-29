@@ -138,6 +138,9 @@ export async function placeShopOrder(body = {}, fxRate = FX_UGX_PER_USD) {
   const notes = text(buyer.notes, 600);
   const address = text(delivery.address, 300);
   const city = text(delivery.city, 120);
+  const region = text(delivery.region, 120);
+  const postalCode = text(delivery.postalCode, 32);
+  const recipientName = text(delivery.recipientName, 120) || name;
   const country = text(delivery.country, 80);
 
   if (name.length < 2) errors.name = 'Tell us who the order is for.';
@@ -155,6 +158,9 @@ export async function placeShopOrder(body = {}, fxRate = FX_UGX_PER_USD) {
     errors.address = 'Add the full delivery address.';
   }
   if (quote.delivery?.requiresAddress && city.length < 2) errors.city = 'Add the delivery town or city.';
+  if (quote.delivery?.requiresAddress && region.length < 2) {
+    errors.region = 'Add the region, state or county — couriers need it.';
+  }
   if (quote.delivery?.zone === 'international' && country.length < 2) {
     errors.country = 'Add the delivery country.';
   }
@@ -206,8 +212,11 @@ export async function placeShopOrder(body = {}, fxRate = FX_UGX_PER_USD) {
       eta: quote.delivery.eta,
       zone: quote.delivery.zone,
       requiresAddress: quote.delivery.requiresAddress,
+      recipientName: quote.delivery.requiresAddress ? recipientName : name,
       address: quote.delivery.requiresAddress ? address : null,
       city: quote.delivery.requiresAddress ? city : 'Kampala',
+      region: quote.delivery.requiresAddress ? region : null,
+      postalCode: quote.delivery.requiresAddress ? postalCode || null : null,
       country: quote.delivery.requiresAddress ? country || 'Uganda' : 'Uganda',
     },
     payment: {

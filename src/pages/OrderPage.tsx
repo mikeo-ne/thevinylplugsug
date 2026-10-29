@@ -63,8 +63,14 @@ export function OrderPage() {
       if (client.name.trim().length < 2) next.name = 'Enter the artist or label name.';
       if (!EMAIL_RE.test(client.email.trim())) next.email = 'Enter a valid email address.';
       if (!PHONE_RE.test(client.phone.trim())) next.phone = 'Include your country code, e.g. +256 772 000 000.';
-      if (client.deliveryAddress.trim().length < 6) next.deliveryAddress = 'Add the full delivery address.';
+      if (client.recipientName.trim().length < 2) next.recipientName = 'Who signs for the parcel?';
+      if (client.deliveryAddress.trim().length < 6) {
+        next.deliveryAddress = 'Add the street, plot number and area.';
+      }
       if (client.deliveryCity.trim().length < 2) next.deliveryCity = 'Add the delivery city.';
+      if (client.deliveryRegion.trim().length < 2) {
+        next.deliveryRegion = 'Add the region, state or county — couriers need it.';
+      }
       if (client.deliveryType === 'international' && client.country.trim().length < 2) {
         next.country = 'Add the delivery country.';
       }
@@ -144,7 +150,17 @@ export function OrderPage() {
       if (error instanceof ApiError) {
         if (error.fields) {
           setErrors(error.fields);
-          const fieldStep = ['name', 'email', 'phone', 'deliveryAddress', 'deliveryCity', 'country'].some(
+          const fieldStep = [
+            'name',
+            'email',
+            'phone',
+            'recipientName',
+            'deliveryAddress',
+            'deliveryCity',
+            'deliveryRegion',
+            'deliveryPostalCode',
+            'country',
+          ].some(
             (key) => key in error.fields!,
           )
             ? 1
@@ -229,7 +245,12 @@ export function OrderPage() {
                         autoComplete="email"
                       />
                     </Field>
-                    <Field label="WhatsApp number" error={errors.phone} required>
+                    <Field
+                      label="Phone / WhatsApp number"
+                      hint="Used for the courier and the deposit prompt"
+                      error={errors.phone}
+                      required
+                    >
                       <input
                         type="tel"
                         className={`field ${errors.phone ? 'field-error' : ''}`}
@@ -321,9 +342,34 @@ export function OrderPage() {
                     </div>
                   </div>
 
+                  <div className="rounded-xl border border-white/[0.08] bg-black/20 p-3.5">
+                    <div className="flex items-start gap-2.5">
+                      <Icon name="truck" size={15} className="mt-0.5 shrink-0 text-lime" />
+                      <p className="text-[11.5px] leading-relaxed text-muted">
+                        <span className="font-medium text-bone">Door-to-door dispatch.</span> Your run is
+                        pressed to order and shipped from the plant straight to this address — a courier
+                        label, not a billing detail. Give us everything a driver needs to find the door.
+                      </p>
+                    </div>
+                  </div>
+
                   <div className="grid gap-4 sm:grid-cols-2">
                     <Field
-                      label={client.deliveryType === 'uganda' ? 'Delivery address' : 'International delivery address'}
+                      label="Recipient full name"
+                      hint="Who signs for the delivery"
+                      error={errors.recipientName}
+                      required
+                    >
+                      <input
+                        className={`field ${errors.recipientName ? 'field-error' : ''}`}
+                        value={client.recipientName}
+                        onChange={(event) => updateClient({ recipientName: event.target.value })}
+                        placeholder={client.name ? client.name : 'e.g. Naledi Okoro'}
+                        autoComplete="name"
+                      />
+                    </Field>
+                    <Field
+                      label="Street address / plot number"
                       error={errors.deliveryAddress}
                       required
                       className="sm:col-span-2"
@@ -335,7 +381,7 @@ export function OrderPage() {
                         placeholder={
                           client.deliveryType === 'uganda'
                             ? 'Plot 14 Bandali Rise, Bugolobi'
-                            : 'O2 Academy, 16–18 Stoke Newington Rd'
+                            : '16–18 Stoke Newington Rd'
                         }
                         autoComplete="street-address"
                       />
@@ -346,6 +392,29 @@ export function OrderPage() {
                         value={client.deliveryCity}
                         onChange={(event) => updateClient({ deliveryCity: event.target.value })}
                         placeholder={client.deliveryType === 'uganda' ? 'Kampala' : 'London'}
+                        autoComplete="address-level2"
+                      />
+                    </Field>
+                    <Field
+                      label="Region / state / county"
+                      error={errors.deliveryRegion}
+                      required
+                    >
+                      <input
+                        className={`field ${errors.deliveryRegion ? 'field-error' : ''}`}
+                        value={client.deliveryRegion}
+                        onChange={(event) => updateClient({ deliveryRegion: event.target.value })}
+                        placeholder={client.deliveryType === 'uganda' ? 'Central' : 'Greater London'}
+                        autoComplete="address-level1"
+                      />
+                    </Field>
+                    <Field label="Postal / ZIP code" hint="Leave blank if your country has none">
+                      <input
+                        className={`field ${errors.deliveryPostalCode ? 'field-error' : ''}`}
+                        value={client.deliveryPostalCode}
+                        onChange={(event) => updateClient({ deliveryPostalCode: event.target.value })}
+                        placeholder={client.deliveryType === 'uganda' ? '00256' : 'N16 8JN'}
+                        autoComplete="postal-code"
                       />
                     </Field>
                     <Field label="Country" error={errors.country} required={client.deliveryType === 'international'}>

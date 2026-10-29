@@ -3,6 +3,8 @@ import { usd } from '../../lib/format';
 import { useRates } from '../../store/RatesContext';
 import { Icon } from '../ui/Icon';
 import { useConfig } from '../../hooks/useConfig';
+import { OnDemandNotice } from './OnDemandNotice';
+import { addressLines, normaliseAddressOrder } from '../../../shared/address.js';
 
 export function OrderSummary({ onEdit }: { onEdit?: (step: number) => void }) {
   const { quote, client, files } = useDraft();
@@ -11,6 +13,20 @@ export function OrderSummary({ onEdit }: { onEdit?: (step: number) => void }) {
   const depositNote = note(quote.deposit, { ugx: quote.totals.deposit.ugx });
 
   const hasFiles = files.audio.length + files.artwork.length > 0;
+
+  // The same formatter the courier label uses, so the review screen can never
+  // promise an address the dispatch slip doesn't carry.
+  const shippingLines = addressLines(
+    normaliseAddressOrder({
+      recipient: client.recipientName || client.name,
+      phone: client.phone,
+      street: client.deliveryAddress,
+      city: client.deliveryCity,
+      region: client.deliveryRegion,
+      postalCode: client.deliveryPostalCode,
+      country: client.country,
+    }),
+  );
 
   return (
     <aside className="panel overflow-hidden">
@@ -59,13 +75,21 @@ export function OrderSummary({ onEdit }: { onEdit?: (step: number) => void }) {
           </span>
         </div>
         <div className="flex items-start justify-between gap-3">
-          <span className="text-muted">Delivery</span>
-          <span className="max-w-[60%] text-right text-bone">
-            {client.deliveryCity
-              ? `${client.deliveryCity}${client.country ? `, ${client.country}` : ''}`
-              : 'Not set yet'}
-            <span className="mt-0.5 block text-[11px] text-muted">
-              {client.deliveryType === 'international' ? 'Tour-city delivery' : 'Kampala delivery'}
+          <span className="text-muted">Ship to</span>
+          <span className="max-w-[62%] text-right text-bone">
+            {shippingLines.length > 0 ? (
+              shippingLines.map((line, index) => (
+                <span key={`${line}-${index}`} className="block text-[11.5px] leading-snug">
+                  {line}
+                </span>
+              ))
+            ) : (
+              <span className="text-muted">Not set yet</span>
+            )}
+            <span className="mt-1 block text-[10.5px] text-muted">
+              {client.deliveryType === 'international'
+                ? 'Direct to your address abroad'
+                : 'Direct to your door in Uganda'}
             </span>
           </span>
         </div>
@@ -80,6 +104,7 @@ export function OrderSummary({ onEdit }: { onEdit?: (step: number) => void }) {
       </div>
 
       <div className="border-t border-white/[0.07] px-5 py-4">
+        <OnDemandNotice className="mb-4" />
         <dl className="space-y-2 text-[12.5px]">
           <div className="flex justify-between">
             <dt className="text-muted">Factory cost</dt>
@@ -118,7 +143,8 @@ export function OrderSummary({ onEdit }: { onEdit?: (step: number) => void }) {
       <div className="border-t border-white/[0.07] bg-black/20 px-5 py-3.5">
         <p className="flex items-start gap-2 text-[10.5px] leading-relaxed text-muted">
           <Icon name="shield" size={12} className="mt-0.5 shrink-0 text-lime/70" />
-          Freight to Kampala and customs brokerage included. Balance due on dispatch.
+          Manufactured to order by {quote.plant.name} and shipped direct — freight and customs included. Balance
+          due on dispatch.
         </p>
       </div>
     </aside>

@@ -288,9 +288,20 @@ export function ShopOrderPage() {
             <div className="panel p-4">
               <h2 className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-bone">Delivery</h2>
               <div className="text-[12.5px] text-bone">{order.delivery.name}</div>
-              <p className="mt-1 text-[11.5px] leading-relaxed text-muted">
+              {order.delivery.requiresAddress && order.delivery.recipientName && (
+                <div className="mt-1 text-[12px] text-bone">{order.delivery.recipientName}</div>
+              )}
+              <p className="mt-1 whitespace-pre-line text-[11.5px] leading-relaxed text-muted">
                 {order.delivery.requiresAddress
-                  ? `${order.delivery.address}, ${order.delivery.city}, ${order.delivery.country}`
+                  ? [
+                      order.delivery.address,
+                      [order.delivery.city, order.delivery.region, order.delivery.postalCode]
+                        .filter(Boolean)
+                        .join(', '),
+                      order.delivery.country,
+                    ]
+                      .filter(Boolean)
+                      .join('\n')
                   : 'Ntinda studio, Kampala — Mon–Sat 09:00–19:00'}
               </p>
               <p className="mt-2 text-[10.5px] uppercase tracking-[0.1em] text-muted/80">{order.delivery.eta}</p>

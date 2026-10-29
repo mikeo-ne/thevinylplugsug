@@ -84,9 +84,12 @@ try {
 
   setValue(field('Artist / Label name'), 'Flow Test Collective');
   setValue(field('Contact email'), 'flow@test.io');
-  setValue(field('WhatsApp number'), '+256 772 555 111');
-  setValue(field('Delivery address'), '12 Bukoto Street, Kamwokya');
+  setValue(field('Phone / WhatsApp number'), '+256 772 555 111');
+  setValue(field('Recipient full name'), 'Naledi Okoro');
+  setValue(field('Street address / plot number'), '12 Bukoto Street, Kamwokya');
   setValue(field('City / town'), 'Kampala');
+  setValue(field('Region / state / county'), 'Central');
+  setValue(field('Postal / ZIP code'), '00256');
   button('Continue').click();
   await wait(120);
 

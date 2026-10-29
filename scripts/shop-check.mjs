@@ -134,7 +134,15 @@ const validOrder = (overrides = {}) => ({
     { releaseId: 'made-in-entebbe', quantity: 1 },
     { releaseId: 'with-the-gs', quantity: 2 },
   ],
-  delivery: { id: 'kampala', address: 'Plot 12 Bukoto Street, Kamwokya', city: 'Kampala', country: 'Uganda' },
+  delivery: {
+    id: 'kampala',
+    recipientName: 'Naledi Okoro',
+    address: 'Plot 12 Bukoto Street, Kamwokya',
+    city: 'Kampala',
+    region: 'Central',
+    postalCode: '00256',
+    country: 'Uganda',
+  },
   payment: { method: 'mtn_momo', payerPhone: '+256772345678' },
   ...overrides,
 });
@@ -195,6 +203,9 @@ try {
   check(order.payment?.status === 'pending', 'payment starts pending', String(order.payment?.status));
   check(Boolean(order.payment?.reference), 'mobile money reference issued', String(order.payment?.reference));
   check(order.delivery?.address === 'Plot 12 Bukoto Street, Kamwokya', 'address kept for the courier');
+  check(order.delivery?.recipientName === 'Naledi Okoro', 'recipient name kept for the courier', String(order.delivery?.recipientName));
+  check(order.delivery?.region === 'Central', 'region kept for the courier', String(order.delivery?.region));
+  check(order.delivery?.postalCode === '00256', 'postal code kept for the courier', String(order.delivery?.postalCode));
   check(
     Boolean(order.totals) && /^ai•+@example\.test$/.test(order.buyer?.email ?? ''),
     'client view masks the buyer email',
@@ -276,7 +287,7 @@ try {
 
   const noAddress = await post(
     '/api/shop/orders',
-    validOrder({ delivery: { id: 'kampala', address: '', city: '' } }),
+    validOrder({ delivery: { id: 'kampala', address: '', city: '', region: '' } }),
   );
   check(noAddress.res.status === 422 && noAddress.body.errors?.address, 'courier orders need an address');
 

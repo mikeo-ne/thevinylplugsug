@@ -351,16 +351,23 @@ api.post('/api/orders', async (req, res) => {
   const email = text(client.email, 160);
   const phone = text(client.phone, 30).replace(/\s+/g, ' ');
   const deliveryType = client.deliveryType === 'international' ? 'international' : 'uganda';
+  const recipientName = text(client.recipientName, 120) || name;
   const deliveryAddress = text(client.deliveryAddress, 300);
   const deliveryCity = text(client.deliveryCity, 120);
+  const deliveryRegion = text(client.deliveryRegion, 120);
+  const deliveryPostalCode = text(client.deliveryPostalCode, 32);
   const country = text(client.country, 80) || (deliveryType === 'uganda' ? 'Uganda' : '');
   const notes = text(client.notes, 1200);
 
   if (name.length < 2) errors.name = 'Enter the artist or label name.';
   if (!EMAIL_RE.test(email)) errors.email = 'Enter a valid contact email.';
   if (!PHONE_RE.test(phone)) errors.phone = 'Enter a WhatsApp number with country code.';
-  if (deliveryAddress.length < 6) errors.deliveryAddress = 'Add the full delivery address.';
+  if (recipientName.length < 2) errors.recipientName = 'Who signs for the parcel?';
+  if (deliveryAddress.length < 6) errors.deliveryAddress = 'Add the street, plot number and area.';
   if (deliveryCity.length < 2) errors.deliveryCity = 'Add the city.';
+  if (deliveryRegion.length < 2) {
+    errors.deliveryRegion = 'Add the region, state or county — couriers need it.';
+  }
   if (deliveryType === 'international' && country.length < 2) {
     errors.country = 'Add the delivery country.';
   }
@@ -405,8 +412,11 @@ api.post('/api/orders', async (req, res) => {
       phone,
       country: country || 'Uganda',
       deliveryType,
+      recipientName,
       deliveryAddress,
       deliveryCity,
+      deliveryRegion,
+      deliveryPostalCode,
       notes,
     },
     configuration: {
@@ -682,6 +692,8 @@ api.get('/api/admin/overview', requireAdmin, (_req, res) => {
         moq: plant.moq,
         leadTime: plant.leadTime,
         ordersEmail: plant.ordersEmail ?? null,
+        // The plant's own inbox — the forwarding target when ordersEmail is us.
+        repEmail: plant.repEmail ?? null,
         // True if a plant inbox happens to be the desk address, so the console
         // (and the BCC logic) know not to expect a separate copy.
         aliasesDesk: Boolean(
@@ -715,7 +727,7 @@ const ORDER_STATUSES = new Set([
   'cancelled',
 ]);
 
-api.patch('/api/admin/orders/:id', requireAdmin, (req, res) => {
+api.patch('/api/admin/orders/:id', requireAdmin, async (req, res) => {
   const db = db_.data;
   const order = db.orders.find((item) => item.id === req.params.id);
   if (!order) return res.status(404).json({ error: 'Order not found.' });
@@ -726,6 +738,35 @@ api.patch('/api/admin/orders/:id', requireAdmin, (req, res) => {
     return res.status(400).json({ error: 'Unknown payment status.' });
   }
 
+  // "At plant" and "in production" are claims about the supplier. Only the
+  // forward that actually emailed them may make that claim — otherwise a status
+  // dropdown could tell the studio a plant has the order when it has never been
+  // contacted.
+  if (status && ['forwarded', 'in_production'].includes(status) && order.plantHandoff?.status !== 'delivered') {
+    return res.status(409).json({
+      error: 'That status is earned, not set: release the order to the plant first (deposit confirmed).',
+      code: 'plant_not_released',
+    });
+  }
+
+  // Confirming the deposit from here is allowed, but it records the money and
+  // goes through the same gate as the payment endpoint — one code path, one
+  // truth about whether a supplier was contacted.
+  let release = null;
+  if (paymentStatus === 'deposit_paid' || paymentStatus === 'paid') {
+    const amount = Number(req.body?.amount);
+    const required = Number(order.quote?.deposit ?? 0);
+    const paid = Number.isFinite(amount) && amount > 0 ? amount : required;
+    if (Math.round((required - paid) * 100) / 100 > 0.005) {
+      return res.status(409).json({
+        error: `That is ${paid.toFixed(2)} USD against a ${required.toFixed(2)} USD deposit. Record the full deposit before releasing the order.`,
+        code: 'deposit_incomplete',
+      });
+    }
+    order.payment.depositPaidUsd = paid;
+    order.payment.paidAt = new Date().toISOString();
+  }
+
   if (status) {
     order.status = status;
     order.statusHistory = [
@@ -733,9 +774,19 @@ api.patch('/api/admin/orders/:id', requireAdmin, (req, res) => {
       { status, at: new Date().toISOString(), by: 'management', note: 'Manual update from console' },
     ];
   }
-  if (paymentStatus) order.payment.status = paymentStatus;
+  if (paymentStatus) {
+    order.payment.status = paymentStatus;
+    order.payment.confirmedAt = new Date().toISOString();
+    order.payment.confirmedBy = 'console';
+  }
   db_.save();
-  res.json({ order: decorateOrder(order) });
+  if (paymentStatus === 'deposit_paid' || paymentStatus === 'paid') {
+    release = await autoForwardOrder(order, { trigger: 'deposit' });
+  }
+  res.json({
+    order: decorateOrder(order),
+    ...(release ? { release: release.skipped ? release : { plant: release.plant.name } } : {}),
+  });
 });
 
 api.post('/api/admin/orders/:id/forward', requireAdmin, async (req, res) => {
@@ -762,10 +813,32 @@ api.post('/api/admin/orders/:id/payment', requireAdmin, async (req, res) => {
   const db = db_.data;
   const order = db.orders.find((item) => item.id === req.params.id);
   if (!order) return res.status(404).json({ error: 'Order not found.' });
-  const amount = req.body?.amount;
-  order.payment.status = 'deposit_paid';
+  const amount = Number(req.body?.amount);
+  const required = Number(order.quote?.deposit ?? 0);
+  const paid = Number.isFinite(amount) && amount > 0 ? amount : required;
+  const shortfall = Math.round((required - paid) * 100) / 100;
+
   order.payment.paidAt = new Date().toISOString();
-  order.payment.depositPaidUsd = Number(amount) > 0 ? Number(amount) : order.quote.deposit;
+  order.payment.depositPaidUsd = paid;
+  order.payment.confirmedAt = order.payment.paidAt;
+  order.payment.confirmedBy = 'console';
+
+  // A part-payment is not a deposit. Recording it as one would put the order in
+  // the "paid" column and let the plant be contacted on money we don't have.
+  if (shortfall > 0.005) {
+    order.payment.status = 'processing';
+    order.payment.partialUsd = paid;
+    order.status = order.status === 'received' ? 'confirmed' : order.status;
+    db_.save();
+    return res.status(409).json({
+      error: `Recorded ${paid.toFixed(2)} USD — still ${shortfall.toFixed(2)} USD short of the ${required.toFixed(2)} deposit. The plant has not been contacted.`,
+      code: 'deposit_incomplete',
+      order: decorateOrder(order),
+      shortfallUsd: shortfall,
+    });
+  }
+
+  order.payment.status = 'deposit_paid';
   order.status = order.status === 'received' ? 'confirmed' : order.status;
   db_.save();
 

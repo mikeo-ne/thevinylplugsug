@@ -50,6 +50,9 @@ Copy `.env.example` if you want to override defaults locally.
 | `DATABASE_URL`    | —           | Postgres (Neon/Supabase/Vercel). **Set this in production** — without it orders live in `/tmp` |
 | `KV_REST_API_URL` + `KV_REST_API_TOKEN` | — | Upstash Redis / Vercel KV, if you prefer Redis to Postgres |
 | `CRON_SECRET`     | —           | Enables the daily `vercel.json` cron that retries failed alerts |
+| `PLANT_*_EMAIL`   | published plant inboxes | Where each plant's production request is emailed |
+| `PLANT_*_REP_EMAIL` | published plant inboxes | Address printed on the dispatch slip when the desk forwards the request by hand |
+| `PLANT_AUTO_FORWARD` | `true`   | Send the production request the moment an admin confirms the deposit (never before) |
 | `RESEND_API_KEY`  | —           | Real email alerts and buyer receipts (unset = simulated) |
 | `NOTIFY_EMAIL_TO` | `CONTACT_EMAIL` | Who receives desk alerts (comma-separated)   |
 | `WHATSAPP_TOKEN` + `WHATSAPP_PHONE_ID` + `NOTIFY_WHATSAPP_TO` | — | Real WhatsApp alerts |
@@ -114,13 +117,18 @@ is monotonic, that 25 units lands on $14.50/ea and a 1-of-1 on $45.00/ea, and th
 Four steps with validation and a sticky live summary:
 
 1. **Client details** — artist/label, email, WhatsApp, Uganda vs. international tour-city delivery,
-   address, city, country, plant preference, notes.
+   and the full door-to-door label the press needs: recipient full name, street address / plot
+   number, city, region / state, postal or ZIP code, country, plant preference, notes.
 2. **Masters & artwork** — drag-and-drop uploads (real `POST /api/uploads`, 80 MB cap, WAV/AIFF/FLAC/
    MP3 and print-ready PDF/JPG/TIFF) *or* pasted WeTransfer/Drive links.
 3. **Payment** — MTN Mobile Money, Airtel Money, International card / bank transfer, merchant
    details, and the required terms acceptance:
    *“Production initializes upon 50% deposit and proof approval.”*
 4. **Review & checkout** — full recap, then `POST /api/orders`.
+
+Every pressed record is made to order: the summary carries a **Custom On-Demand Manufacturing**
+notice, and the deposit receipt says plainly that the run is pressed after the order and shipped
+from the plant straight to the address above — not from a Kampala warehouse.
 
 ### 4. Instant success screen (`/order/:id`)
 Generated order ID (`7H-2026-XXXX`), deposit instructions per rail, order summary, live status of
@@ -203,6 +211,37 @@ per IP lock the endpoint for ten minutes.
 
 Admin routes require the `X-Admin-Token` header returned by `/api/admin/login` (8-hour sliding
 session, in-memory).
+
+### What the plant actually receives
+
+Once — and only once — an admin has confirmed the deposit, the plant gets a **drop-ship dispatch
+slip** before it gets the production detail. Built by `shared/address.js` from the same order
+record, so the desk email, the plant email and the console copy are byte-identical:
+
+```text
+7H MUSIC GROUP — DROP-SHIP DISPATCH SLIP
+Do not return to sender — this is a direct-to-customer delivery.
+
+Order       7H-2026-TEST
+Plant       Green Lakes Pressing — Lithuania · eco vinyl & express
+Released    on deposit clearance
+
+SHIP TO
+  Recipient   Naledi Okoro
+  Phone       +44 7700 900123
+  Email       naledi@example.com
+  Street      16 Stoke Newington Rd
+  City        London
+  Region      Greater London
+  Postal      N16 8JN
+  Country     United Kingdom
+
+CONTENTS
+...
+```
+
+When a plant's address is the 7H desk instead of the plant, the email opens with
+`ROUTE VIA DESK` plus the rep address to forward to, and the slip prints the same thing.
 
 ### Simulated webhook payload (forwarded to the plant)
 
