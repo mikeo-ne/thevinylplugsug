@@ -446,6 +446,30 @@ async function telegramSend(text) {
 }
 
 /**
+ * What to say when a channel has no credentials yet.
+ *
+ * Naming the variable is not enough — `TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID are
+ * not set` was printed even when the token was set and only the chat id was
+ * missing, which sends you looking in the wrong place. Say exactly what is
+ * missing, and what to do next.
+ */
+export function unconfiguredMessage(channel, missing = []) {
+  const list = missing.join(', ');
+  if (channel === 'telegram') {
+    if (missing.includes('TELEGRAM_BOT_TOKEN') && missing.includes('TELEGRAM_CHAT_ID')) {
+      return 'Telegram is not set up yet: TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID are both missing.';
+    }
+    if (missing.includes('TELEGRAM_CHAT_ID')) {
+      return 'The bot token is in place — TELEGRAM_CHAT_ID is the only thing missing. Press Find chat id below, copy the id, then add it in Vercel and redeploy.';
+    }
+    return 'TELEGRAM_BOT_TOKEN is missing — paste the token from @BotFather.';
+  }
+  if (channel === 'email') return `Email is not set up yet: ${list}.`;
+  if (channel === 'whatsapp') return `WhatsApp is not set up yet: ${list}. Telegram needs no business account — use that instead.`;
+  return `Not configured — ${list} ${missing.length === 1 ? 'is' : 'are'} missing.`;
+}
+
+/**
  * "Which chat id am I?" — the step everyone gets stuck on.
  *
  * The chat id is not printed anywhere in Telegram's UI, and the documented route
@@ -1104,7 +1128,9 @@ export function channelStatus() {
         ? `Telegram bot → ${config.telegramChats.join(', ')}`
         : config.webhook
           ? 'Generic webhook'
-          : 'Not configured',
+          : process.env.TELEGRAM_BOT_TOKEN
+            ? 'Bot token in place — add TELEGRAM_CHAT_ID (press Find chat id)'
+            : 'Not configured — add TELEGRAM_BOT_TOKEN from @BotFather',
     },
     {
       channel: 'plant',
@@ -1169,6 +1195,20 @@ export async function sendTestAlert(channel) {
   const base = (process.env.PUBLIC_BASE_URL ?? 'https://thevinylplugsug.vercel.app').replace(/\/$/, '');
   const check = alertEnvCheck().find((entry) => entry.channel === channel);
   const attemptedAt = Date.now();
+
+  // "You have not set this up" and "it is set up and broken" are different
+  // answers, and only the second is a failure. A half-configured channel used to
+  // come back red and disappear into the retry queue, which reads as a fault.
+  if (check && check.missing.length > 0) {
+    return {
+      channel,
+      status: 'unconfigured',
+      mode: 'simulated',
+      error: unconfiguredMessage(channel, check.missing),
+      missing: check.missing,
+      attemptedAt: stamp,
+    };
+  }
 
   try {
     if (channel === 'email') {

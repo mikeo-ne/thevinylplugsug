@@ -172,9 +172,8 @@ process.env.NOTIFY_WEBHOOK_URL = `${SINK}/webhook`;
 process.env.CRON_SECRET = 'cron_test_secret';
 process.env.PUBLIC_BASE_URL = 'https://7h.test';
 
-const { alertEnvCheck, sendTestAlert, sendTestAlerts, telegramDiscoverChats } = await import(
-  '../server/notifications.js'
-);
+const { alertEnvCheck, channelStatus, sendTestAlert, sendTestAlerts, telegramDiscoverChats } =
+  await import('../server/notifications.js');
 const { db_, storeReady } = await import('../server/store.js');
 const { retryFailedAlerts, alertOutboxSummary } = await import('../server/webhooks.js');
 
@@ -195,8 +194,13 @@ delete process.env.RESEND_API_KEY;
 const withoutKey = alertEnvCheck().find((entry) => entry.channel === 'email');
 check('a cleared variable shows up as missing', withoutKey.missing.includes('RESEND_API_KEY'));
 const unconfigured = await sendTestAlert('email');
-check('an unconfigured channel fails honestly', unconfigured.status === 'failed', unconfigured.status);
-check('…and says which variable to set', /RESEND_API_KEY is not set/.test(unconfigured.error ?? ''), unconfigured.error);
+check(
+  'an unconfigured channel reports unconfigured, not failed',
+  unconfigured.status === 'unconfigured',
+  unconfigured.status,
+);
+check('…and says which variable to set', /RESEND_API_KEY/.test(unconfigured.error ?? ''), unconfigured.error);
+check('…and lists it', unconfigured.missing?.includes('RESEND_API_KEY'), JSON.stringify(unconfigured.missing));
 process.env.RESEND_API_KEY = savedKey;
 
 /* ------------------------------------------------------------------ *
@@ -256,6 +260,27 @@ check(
 check('a DM is listed by name', discovered.chats.some((chat) => chat.title === 'Mike'));
 check('the token never comes back', !JSON.stringify(discovered).includes('test-token'));
 
+console.log('\n▸ A half-configured channel says exactly what is missing');
+const savedChat = process.env.TELEGRAM_CHAT_ID;
+delete process.env.TELEGRAM_CHAT_ID;
+const halfBot = await sendTestAlert('telegram');
+check('a bot with no chat id is unconfigured', halfBot.status === 'unconfigured', halfBot.status);
+check(
+  '…and only blames the chat id, never the token it already has',
+  /TELEGRAM_CHAT_ID/.test(halfBot.error ?? '') && !/TELEGRAM_BOT_TOKEN/.test(halfBot.error ?? ''),
+  halfBot.error,
+);
+check('…and says how to get one', /Find chat id/.test(halfBot.error ?? ''), halfBot.error);
+const savedWebhook = process.env.NOTIFY_WEBHOOK_URL;
+delete process.env.NOTIFY_WEBHOOK_URL;
+check(
+  'the console row describes the half-finished state',
+  /add TELEGRAM_CHAT_ID/.test(channelStatus().find((entry) => entry.channel === 'telegram')?.detail ?? ''),
+  channelStatus().find((entry) => entry.channel === 'telegram')?.detail,
+);
+process.env.NOTIFY_WEBHOOK_URL = savedWebhook;
+process.env.TELEGRAM_CHAT_ID = savedChat;
+
 const noBot = await (async () => {
   const saved = process.env.TELEGRAM_BOT_TOKEN;
   delete process.env.TELEGRAM_BOT_TOKEN;
@@ -297,7 +322,8 @@ emailError = null;
 const savedToken = process.env.WHATSAPP_TOKEN;
 delete process.env.WHATSAPP_TOKEN;
 const noWhatsApp = await sendTestAlert('whatsapp');
-check('whatsapp without a token fails', noWhatsApp.status === 'failed');
+check('whatsapp without a token is unconfigured, not broken', noWhatsApp.status === 'unconfigured', noWhatsApp.status);
+check('…and points at Telegram instead', /Telegram/.test(noWhatsApp.error ?? ''), noWhatsApp.error);
 check('whatsapp names the missing variables', noWhatsApp.missing?.includes('WHATSAPP_TOKEN'), JSON.stringify(noWhatsApp.missing));
 process.env.WHATSAPP_TOKEN = savedToken;
 
