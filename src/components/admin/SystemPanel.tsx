@@ -93,7 +93,15 @@ export function SystemPanel() {
       setResults(sent);
       const delivered = sent.filter((result) => result.status === 'delivered').length;
       const failed = sent.filter((result) => result.status === 'failed').length;
-      if (delivered > 0) notify(`${delivered} alert${delivered === 1 ? '' : 's'} delivered.`, 'success');
+      const unconfigured = sent.filter((result) => result.status === 'unconfigured').length;
+      if (delivered > 0) {
+        notify(
+          `${delivered} alert${delivered === 1 ? '' : 's'} delivered${
+            unconfigured > 0 ? ` · ${unconfigured} channel${unconfigured === 1 ? '' : 's'} not set up yet` : ''
+          }.`,
+          'success',
+        );
+      }
       if (failed > 0 && delivered === 0) {
         notify('No channel could send — see the error beside each one.', 'error');
       }
@@ -308,12 +316,18 @@ export function SystemPanel() {
                   {result && (
                     <p
                       className={`mt-1 text-[10.5px] leading-relaxed ${
-                        result.status === 'delivered' ? 'text-lime' : 'text-red-300'
+                        result.status === 'delivered'
+                          ? 'text-lime'
+                          : result.status === 'unconfigured'
+                            ? 'text-amber-200'
+                            : 'text-red-300'
                       }`}
                     >
                       {result.status === 'delivered'
                         ? `Test delivered${result.target ? ` → ${result.target}` : ''}`
-                        : `Test failed — ${result.error ?? 'unknown error'}`}
+                        : result.status === 'unconfigured'
+                          ? `Not set up — ${result.error ?? 'add its variables in Vercel'}`
+                          : `Test failed — ${result.error ?? 'unknown error'}`}
                     </p>
                   )}
                 </li>

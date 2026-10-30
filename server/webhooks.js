@@ -2,6 +2,7 @@ import { db_, newId } from './store.js';
 import { COMPANY, PAYMENT_METHODS } from './config.js';
 import { describeConfiguration, PRESSING_PLANTS } from '../shared/pricing.js';
 import {
+  alertEnvCheck,
   attachPlantPayloadFormatter,
   channelMode,
   channelStatus,
@@ -11,6 +12,7 @@ import {
   emailPlantOrder,
   emailShopReceipt,
   notificationConfig,
+  unconfiguredMessage,
   whatsappTemplateSample,
 } from './notifications.js';
 import { describeShopOrder } from '../shared/shop.js';
@@ -710,6 +712,21 @@ export async function retryFailedAlerts({
       summary.skipped += 1;
       summary.results.push({ id: event.id, channel: event.channel, status: 'skipped', reason: 'order not found' });
       continue;
+    }
+
+    // Retrying a channel that has no credentials cannot succeed, and leaving it
+    // in the queue makes the outbox read like an outage. Move it to `unconfigured`
+    // so the console says "not set up" instead of "failed" forever.
+    if (event.channel !== 'plant') {
+      const env = alertEnvCheck().find((entry) => entry.channel === event.channel);
+      if (env && env.missing.length > 0) {
+        event.status = 'unconfigured';
+        event.error = unconfiguredMessage(event.channel, env.missing);
+        event.lastAttemptAt = new Date().toISOString();
+        summary.skipped += 1;
+        summary.results.push({ id: event.id, channel: event.channel, status: 'unconfigured' });
+        continue;
+      }
     }
 
     summary.attempted += 1;
