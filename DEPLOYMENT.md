@@ -186,6 +186,16 @@ Every pressing order and every fan purchase sends one message: order reference, 
 deposit, the **full ship-to address**, and — for pressing orders — the reminder that nothing reaches
 the plant until the deposit is confirmed. Same message body as the email, sized for a phone.
 
+**Making the bot answer.** A Telegram bot is silent by design — it only speaks when something calls
+the Bot API, and this app only calls it to send alerts. If you message it and nothing happens, that is
+expected, not broken. Press **Enable replies** beside the Telegram row and the bot gains a webhook: say
+anything to it and it replies with your chat id (ready to copy) plus a one-line explanation.
+
+Setting a webhook switches Telegram's `getUpdates` off for that bot, so **Find chat id** stops reading
+directly and says so. Use whichever you prefer — the id is the same either way. The webhook lives at
+`/api/telegram/webhook` and authenticates with a secret derived from the bot token (never stored,
+never in env), so a stranger POSTing to that URL gets nothing.
+
 `TELEGRAM_API_BASE` exists only so `npm run test:alerts` can point the bot at a local sink; leave it
 unset in production.
 

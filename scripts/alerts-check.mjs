@@ -36,7 +36,7 @@ const check = (name, condition, detail) => {
  * The sink: one server pretending to be Resend, Meta and Slack
  * ------------------------------------------------------------------ */
 
-const received = { emails: [], whatsapp: [], telegram: [], slack: [], webhook: [] };
+const received = { emails: [], whatsapp: [], telegram: [], slack: [], webhook: [], webhookAdmin: [] };
 let emailStatus = 200;
 let emailError = null;
 
@@ -120,6 +120,28 @@ const sink = http.createServer((req, res) => {
       return;
     }
 
+    if (/^\/bot[^/]+\/setWebhook$/.test(url)) {
+      received.webhookAdmin.push({ path: 'setWebhook', body: json });
+      res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ ok: true, result: true, description: 'Webhook was set' }));
+      return;
+    }
+
+    if (/^\/bot[^/]+\/deleteWebhook$/.test(url)) {
+      received.webhookAdmin.push({ path: 'deleteWebhook', body: json });
+      res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ ok: true, result: true }));
+      return;
+    }
+
+    if (/^\/bot[^/]+\/getWebhookInfo$/.test(url)) {
+      res.writeHead(200, { 'content-type': 'application/json' }).end(
+        JSON.stringify({
+          ok: true,
+          result: { url: process.env.PUBLIC_BASE_URL + '/api/telegram/webhook', pending_update_count: 0 },
+        }),
+      );
+      return;
+    }
+
     if (/^\/bot[^/]+\/getMe$/.test(url)) {
       res
         .writeHead(200, { 'content-type': 'application/json' })
@@ -172,8 +194,19 @@ process.env.NOTIFY_WEBHOOK_URL = `${SINK}/webhook`;
 process.env.CRON_SECRET = 'cron_test_secret';
 process.env.PUBLIC_BASE_URL = 'https://7h.test';
 
-const { alertEnvCheck, channelStatus, sendTestAlert, sendTestAlerts, telegramDiscoverChats } =
-  await import('../server/notifications.js');
+const {
+  alertEnvCheck,
+  buildTelegramReply,
+  channelStatus,
+  disableTelegramReplies,
+  enableTelegramReplies,
+  handleTelegramUpdate,
+  sendTestAlert,
+  sendTestAlerts,
+  telegramDiscoverChats,
+  telegramWebhookInfo,
+  telegramWebhookSecretForTests,
+} = await import('../server/notifications.js');
 const { db_, storeReady } = await import('../server/store.js');
 const { retryFailedAlerts, alertOutboxSummary } = await import('../server/webhooks.js');
 
@@ -290,6 +323,53 @@ const noBot = await (async () => {
 })();
 check('without a token the lookup says so', noBot.status === 'unconfigured', noBot.status);
 check('…and names the missing variable', /TELEGRAM_BOT_TOKEN/.test(noBot.error ?? ''), noBot.error);
+
+/* ------------------------------- replies -------------------------------- */
+console.log('\n▸ The bot can answer when it is spoken to');
+
+const greeting = buildTelegramReply({
+  update_id: 1,
+  message: { chat: { id: 768261003, type: 'private', first_name: 'Mike' }, text: 'hi' },
+});
+check('a message produces a reply', Boolean(greeting), 'no reply built');
+check('the reply carries the chat id', /768261003/.test(greeting?.text ?? ''), greeting?.text?.slice(0, 80));
+check('…in a copyable code tag', /<code>768261003<\/code>/.test(greeting?.text ?? ''));
+check('…and says where to put it', /TELEGRAM_CHAT_ID/.test(greeting?.text ?? ''));
+check('an update with no chat is ignored', buildTelegramReply({ update_id: 9 }) === null);
+
+const answered = await handleTelegramUpdate(
+  { message: { chat: { id: 768261003, type: 'private', first_name: 'Mike' }, text: '/start' } },
+  telegramWebhookSecretForTests(),
+);
+check('a correctly signed update is answered', answered.ok === true && answered.replied === true, answered.error);
+check('the greeting went out through the Bot API', received.telegram.at(-1)?.body?.chat_id === '768261003');
+check('…as HTML', received.telegram.at(-1)?.body?.parse_mode === 'HTML');
+
+const impostor = await handleTelegramUpdate(
+  { message: { chat: { id: 999, type: 'private' }, text: 'hi' } },
+  'not-the-secret',
+);
+check('an unsigned update is refused', impostor.ok === false, JSON.stringify(impostor));
+
+const enabled = await enableTelegramReplies();
+check('replies can be switched on', enabled.ok === true, enabled.error);
+check('…by registering our endpoint', received.webhookAdmin[0]?.path === 'setWebhook');
+check(
+  '…with a secret Telegram echoes back',
+  Boolean(received.webhookAdmin[0]?.body?.secret_token),
+  JSON.stringify(received.webhookAdmin[0]?.body?.secret_token),
+);
+check(
+  '…that is derived from the bot token, not stored',
+  received.webhookAdmin[0]?.body?.secret_token === telegramWebhookSecretForTests(),
+);
+
+const info = await telegramWebhookInfo();
+check('the console can read the webhook state', info.configured === true, JSON.stringify(info));
+
+const disabled = await disableTelegramReplies();
+check('replies can be switched off', disabled.ok === true, disabled.error);
+check('…by deleting the webhook', received.webhookAdmin.at(-1)?.path === 'deleteWebhook');
 
 const slackResult = await sendTestAlert('slack');
 check('slack test is delivered', slackResult.status === 'delivered', slackResult.error);

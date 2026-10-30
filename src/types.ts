@@ -493,8 +493,18 @@ export interface AlertChannelEnv {
   missing: string[];
 }
 
+export interface TelegramWebhook {
+  configured: boolean;
+  url?: string | null;
+  expectedUrl?: string;
+  pendingUpdates?: number;
+  lastError?: string | null;
+  lastErrorAt?: string | null;
+  error?: string;
+}
+
 export interface TelegramChats {
-  status: 'ok' | 'unconfigured' | 'error';
+  status: 'ok' | 'unconfigured' | 'webhook' | 'error';
   bot?: string | null;
   chats: { id: string; type: string; title: string | null; username: string | null }[];
   hint?: string | null;
