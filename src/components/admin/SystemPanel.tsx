@@ -3,7 +3,7 @@ import { api, ApiError } from '../../lib/api';
 import { dateTime } from '../../lib/format';
 import { Icon } from '../ui/Icon';
 import { useToast } from '../ui/Toast';
-import type { AlertTestResult, SystemHealth, TelegramChats } from '../../types';
+import type { AlertTestResult, SystemHealth, TelegramChats, TelegramWebhook } from '../../types';
 
 const CHANNEL_LABEL: Record<string, string> = {
   email: 'Email',
@@ -40,6 +40,8 @@ export function SystemPanel() {
   const [results, setResults] = useState<AlertTestResult[] | null>(null);
   const [telegram, setTelegram] = useState<TelegramChats | null>(null);
   const [findingChats, setFindingChats] = useState(false);
+  const [webhook, setWebhook] = useState<TelegramWebhook | null>(null);
+  const [switchingReplies, setSwitchingReplies] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -76,6 +78,39 @@ export function SystemPanel() {
       setFindingChats(false);
     }
   };
+
+  /** Turn the bot's replies on (register the webhook) or off again. */
+  const toggleReplies = async () => {
+    setSwitchingReplies(true);
+    try {
+      const enabled = webhook?.configured !== true;
+      const result = enabled ? await api.adminEnableTelegramReplies() : await api.adminDisableTelegramReplies();
+      setWebhook(result.info);
+      setTelegram(null);
+      notify(
+        enabled
+          ? 'Replies on — message the bot in Telegram and it will answer with your chat id.'
+          : 'Replies off — Find chat id works again.',
+        'success',
+      );
+    } catch (error) {
+      notify(error instanceof ApiError ? error.message : 'Telegram would not change the webhook.', 'error');
+    } finally {
+      setSwitchingReplies(false);
+    }
+  };
+
+  const loadWebhook = useCallback(async () => {
+    try {
+      setWebhook(await api.adminTelegramWebhook());
+    } catch {
+      // The panel is still useful without it; the button reports its own errors.
+    }
+  }, []);
+
+  useEffect(() => {
+    if (system) void loadWebhook();
+  }, [system, loadWebhook]);
 
   const copyChat = async (id: string) => {
     try {
@@ -261,15 +296,36 @@ export function SystemPanel() {
 
                   {channel.channel === 'telegram' && (
                     <div className="mt-1.5">
-                      <button
-                        type="button"
-                        onClick={() => void findChats()}
-                        disabled={findingChats}
-                        className="flex items-center gap-1 text-[9.5px] uppercase tracking-[0.12em] text-muted transition-colors hover:text-bone disabled:opacity-40"
-                      >
-                        <Icon name={findingChats ? 'spinner' : 'search'} size={10} className={findingChats ? 'animate-spin' : ''} />
-                        Find chat id
-                      </button>
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                        <button
+                          type="button"
+                          onClick={() => void findChats()}
+                          disabled={findingChats}
+                          className="flex items-center gap-1 text-[9.5px] uppercase tracking-[0.12em] text-muted transition-colors hover:text-bone disabled:opacity-40"
+                        >
+                          <Icon name={findingChats ? 'spinner' : 'search'} size={10} className={findingChats ? 'animate-spin' : ''} />
+                          Find chat id
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void toggleReplies()}
+                          disabled={switchingReplies || !env.find((entry) => entry.channel === 'telegram')?.variables.find((variable) => variable.key === 'TELEGRAM_BOT_TOKEN')?.set}
+                          title="Let the bot answer messages, so it can tell you your chat id in chat"
+                          className="flex items-center gap-1 text-[9.5px] uppercase tracking-[0.12em] text-muted transition-colors hover:text-bone disabled:opacity-30"
+                        >
+                          <Icon name={switchingReplies ? 'spinner' : 'bolt'} size={10} className={switchingReplies ? 'animate-spin' : ''} />
+                          {webhook?.configured ? 'Replies on · switch off' : 'Enable replies'}
+                        </button>
+                      </div>
+                      <p className="mt-1 text-[9px] leading-relaxed text-muted/70">
+                        A bot only speaks when something listens. Replies on = message it and it answers with
+                        your chat id; replies off = Find chat id reads Telegram directly.
+                      </p>
+                      {webhook && !webhook.configured && webhook.lastError && (
+                        <p className="mt-1 text-[9px] leading-relaxed text-amber-200/80">
+                          Telegram could not reach the webhook: {webhook.lastError}
+                        </p>
+                      )}
 
                       {telegram && (
                         <div className="mt-1.5 rounded-md border border-white/[0.07] bg-black/20 px-2 py-1.5">

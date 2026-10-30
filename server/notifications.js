@@ -7,6 +7,7 @@
  * the product can be demoed without provisioning anything — and the console
  * says so explicitly rather than pretending an alert was sent.
  */
+import crypto from 'node:crypto';
 import { COMPANY, PAYMENT_METHODS } from './config.js';
 import { describeConfiguration, PRESSING_PLANTS } from '../shared/pricing.js';
 import { describeShopOrder } from '../shared/shop.js';
@@ -514,11 +515,137 @@ export async function telegramDiscoverChats() {
         : 'Open the bot in Telegram, press Start, send it any message, then press this again.',
     };
   } catch (error) {
+    const message = error?.name === 'AbortError' ? 'Telegram timed out' : error.message;
+    // getUpdates is switched off while a webhook is registered. That is not a
+    // fault: the bot answers in chat instead, so say so.
+    if (/webhook is active|can't use getUpdates/i.test(message)) {
+      return {
+        status: 'webhook',
+        chats: [],
+        error:
+          'Replies are switched on, so Telegram delivers messages to the app instead of this lookup. Message the bot in Telegram and it will reply with your chat id — or switch replies off below and press this again.',
+      };
+    }
+    return { status: 'error', chats: [], error: message };
+  }
+}
+
+/**
+ * Making the bot answerable.
+ *
+ * A Telegram bot is silent by design: it only speaks when something calls the
+ * Bot API. Ours is an outbound rail, so messaging it looked like a broken setup.
+ * Two methods let it answer — long polling (`getUpdates`, fine for a test, wrong
+ * for serverless) or a webhook. This is the webhook: Telegram POSTs each message
+ * to us and we reply with the one thing the desk actually needs, its chat id.
+ *
+ * Setting a webhook switches `getUpdates` off for that bot, which is why the
+ * console reports the active webhook instead of pretending discovery is broken.
+ */
+const telegramWebhookSecret = () => {
+  const token = process.env.TELEGRAM_BOT_TOKEN ?? '';
+  return crypto.createHash('sha256').update(`7h-telegram::${token}`).digest('hex').slice(0, 40);
+};
+
+/** The secret is derived, never stored — the tests need to compute the same one. */
+export const telegramWebhookSecretForTests = () => telegramWebhookSecret();
+
+export const telegramWebhookUrl = () =>
+  `${(process.env.PUBLIC_BASE_URL ?? 'https://thevinylplugsug.vercel.app').replace(/\/$/, '')}/api/telegram/webhook`;
+
+/** Register our endpoint with Telegram so messages reach the bot. */
+export async function enableTelegramReplies() {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  if (!token) throw new Error('TELEGRAM_BOT_TOKEN is not set');
+  const result = await postJson(`${telegramApi()}/bot${token}/setWebhook`, {
+    url: telegramWebhookUrl(),
+    secret_token: telegramWebhookSecret(),
+    allowed_updates: ['message', 'my_chat_member'],
+    drop_pending_updates: false,
+  });
+  return { ok: true, url: telegramWebhookUrl(), httpStatus: result.httpStatus };
+}
+
+/** Back to polling — used when you want the console's Find chat id again. */
+export async function disableTelegramReplies() {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  if (!token) throw new Error('TELEGRAM_BOT_TOKEN is not set');
+  const result = await postJson(`${telegramApi()}/bot${token}/deleteWebhook`, {
+    drop_pending_updates: false,
+  });
+  return { ok: true, httpStatus: result.httpStatus };
+}
+
+/** What Telegram thinks our endpoint is — pending updates, last error. */
+export async function telegramWebhookInfo() {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  if (!token) return { configured: false, error: 'TELEGRAM_BOT_TOKEN is not set' };
+  try {
+    const result = await getJson(`${telegramApi()}/bot${token}/getWebhookInfo`);
+    const info = result.data?.result ?? {};
     return {
-      status: 'error',
-      chats: [],
-      error: error?.name === 'AbortError' ? 'Telegram timed out' : error.message,
+      configured: Boolean(info.url),
+      url: info.url || null,
+      expectedUrl: telegramWebhookUrl(),
+      pendingUpdates: info.pending_update_count ?? 0,
+      lastError: info.last_error_message ?? null,
+      lastErrorAt: info.last_error_date ? new Date(info.last_error_date * 1000).toISOString() : null,
     };
+  } catch (error) {
+    return { configured: false, error: error.message };
+  }
+}
+
+/** The reply a person gets when they say anything to the bot. */
+export function buildTelegramReply(update) {
+  const chat =
+    update?.message?.chat ?? update?.my_chat_member?.chat ?? update?.edited_message?.chat ?? null;
+  if (!chat?.id) return null;
+
+  const name = chat.title ?? [chat.first_name, chat.last_name].filter(Boolean).join(' ') ?? '';
+  const base = (process.env.PUBLIC_BASE_URL ?? 'https://thevinylplugsug.vercel.app').replace(/\/$/, '');
+  const lines = [
+    '<b>7H Music Group — order desk bot</b> ✅',
+    '',
+    'The bot is alive. It has one job: telling you the moment an order lands.',
+    '',
+    `Your chat id: <code>${escapeHtml(String(chat.id))}</code>`,
+    name ? `Chat: ${escapeHtml(name)}` : null,
+    '',
+    `Paste that into <b>TELEGRAM_CHAT_ID</b> in Vercel, redeploy, then press <b>Send test alert</b> at ${base}/admin.`,
+    '',
+    'After that this chat gets every pressing order and every fan purchase — with the full ship-to address.',
+  ].filter((line) => line !== null);
+  return { chatId: String(chat.id), text: lines.join('\n') };
+}
+
+/**
+ * Handle one update from Telegram.
+ *
+ * Returns `{ ok, replied, chatId }` — never throws at the caller, because
+ * Telegram retries any non-2xx and a redelivery storm is worse than a dropped
+ * greeting.
+ */
+export async function handleTelegramUpdate(update, providedSecret) {
+  const expected = telegramWebhookSecret();
+  if (process.env.TELEGRAM_BOT_TOKEN && providedSecret !== expected) {
+    return { ok: false, replied: false, error: 'bad secret' };
+  }
+
+  const reply = buildTelegramReply(update);
+  if (!reply) return { ok: true, replied: false };
+
+  try {
+    const token = process.env.TELEGRAM_BOT_TOKEN;
+    await postJson(`${telegramApi()}/bot${token}/sendMessage`, {
+      chat_id: reply.chatId,
+      text: reply.text,
+      parse_mode: 'HTML',
+      disable_web_page_preview: true,
+    });
+    return { ok: true, replied: true, chatId: reply.chatId };
+  } catch (error) {
+    return { ok: true, replied: false, chatId: reply.chatId, error: error.message };
   }
 }
 

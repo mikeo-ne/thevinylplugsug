@@ -43,9 +43,13 @@ import {
 } from './shop.js';
 import {
   alertEnvCheck,
+  disableTelegramReplies,
+  enableTelegramReplies,
+  handleTelegramUpdate,
   notificationConfig,
   sendTestAlerts,
   telegramDiscoverChats,
+  telegramWebhookInfo,
 } from './notifications.js';
 import { currentUgxRate, getRates } from './rates.js';
 import { BASE_CURRENCY, DISPLAY_CURRENCIES } from '../shared/currency.js';
@@ -894,6 +898,45 @@ api.get('/api/admin/system', requireAdmin, async (_req, res) => {
       publicBaseUrl: process.env.PUBLIC_BASE_URL ?? null,
     },
   });
+});
+
+/**
+ * Telegram's inbound endpoint — the only public route in the app.
+ *
+ * A webhook cannot carry an admin token, so it authenticates the way Telegram
+ * intends: a secret derived from the bot token, sent back in a header that only
+ * Telegram and this server can compute. Anything else is ignored with a 200 so a
+ * prober learns nothing and Telegram stops retrying.
+ *
+ * Every message gets one answer: the chat id the desk needs for outbound alerts.
+ */
+api.post('/api/telegram/webhook', async (req, res) => {
+  const secret = req.headers['x-telegram-bot-api-secret-token'];
+  const result = await handleTelegramUpdate(req.body ?? {}, secret);
+  res.json({ ok: result.ok });
+});
+
+/** Replies on or off, and what Telegram says about the endpoint. */
+api.get('/api/admin/telegram/webhook', requireAdmin, async (_req, res) => {
+  res.json(await telegramWebhookInfo());
+});
+
+api.post('/api/admin/telegram/webhook', requireAdmin, async (_req, res) => {
+  try {
+    const result = await enableTelegramReplies();
+    res.json({ ...result, info: await telegramWebhookInfo() });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+api.delete('/api/admin/telegram/webhook', requireAdmin, async (_req, res) => {
+  try {
+    const result = await disableTelegramReplies();
+    res.json({ ...result, info: await telegramWebhookInfo() });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
 });
 
 /**

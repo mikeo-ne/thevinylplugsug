@@ -10,6 +10,7 @@ import type {
   ShopOrder,
   SystemHealth,
   TelegramChats,
+  TelegramWebhook,
   UploadedFile,
   WebhookEvent,
 } from '../types';
@@ -149,6 +150,19 @@ export const api = {
 
   /** Ask the bot who has messaged it — that is where the chat id comes from. */
   adminTelegramChats: () => request<TelegramChats>('/api/admin/telegram/chats'),
+
+  /** Let the bot answer messages, so it can hand back a chat id in chat. */
+  adminTelegramWebhook: () => request<TelegramWebhook>('/api/admin/telegram/webhook'),
+
+  adminEnableTelegramReplies: () =>
+    request<{ ok: boolean; url: string } & { info: TelegramWebhook }>('/api/admin/telegram/webhook', {
+      method: 'POST',
+    }),
+
+  adminDisableTelegramReplies: () =>
+    request<{ ok: boolean } & { info: TelegramWebhook }>('/api/admin/telegram/webhook', {
+      method: 'DELETE',
+    }),
 
   adminTestAlerts: (channels?: string[]) =>
     request<{ results: AlertTestResult[] }>('/api/admin/alerts/test', {
