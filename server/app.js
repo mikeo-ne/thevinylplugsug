@@ -79,6 +79,13 @@ import {
   walletFeeUgx,
 } from './momo.js';
 import {
+  ensureInvoice,
+  invoiceAmounts,
+  invoiceStatus,
+  invoiceUrl,
+  renderInvoiceHtml,
+} from './invoices.js';
+import {
   alertOutboxSummary,
   automationConfig,
   channelVerification,
@@ -785,6 +792,9 @@ api.post('/api/orders', async (req, res) => {
     clientUserAgent: text(req.headers['user-agent'], 200),
   };
 
+  // The invoice is numbered the moment the order exists, so the client leaves the
+  // form holding a reference that is already a document (see server/invoices.js).
+  ensureInvoice(order, db);
   db.orders.unshift(order);
   db_.save();
 
@@ -1070,6 +1080,29 @@ api.get('/api/payments/rails', (_req, res) => {
   res.json({ rails: paymentsHealth() });
 });
 
+/**
+ * The invoice, as a printable page.
+ *
+ * Public by order reference, exactly like `GET /api/orders/:id` — the reference is
+ * the secret, and the client needs to open this on a phone without logging in.
+ * It is also the link that goes into the WhatsApp hand-off, and `noindex` keeps it
+ * out of search results.
+ */
+api.get('/api/orders/:id/invoice', (req, res) => {
+  reconcileEvents();
+  const db = db_.data;
+  const order = db.orders.find((item) => item.id.toUpperCase() === String(req.params.id).toUpperCase());
+  if (!order) return res.status(404).json({ error: 'Order not found.' });
+
+  const before = order.invoice?.number;
+  const invoice = ensureInvoice(order, db);
+  if (!before) db_.save();
+
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+  res.type('text/html').send(renderInvoiceHtml(order, invoice));
+});
+
 api.get('/api/orders/:id', (req, res) => {
   reconcileEvents();
   const db = db_.data;
@@ -1112,6 +1145,11 @@ api.get('/api/orders/:id', (req, res) => {
       deliveredAt,
     }));
 
+  // A legacy or demo order gets its number the first time anyone looks at it.
+  const beforeInvoice = order.invoice?.number;
+  const invoice = ensureInvoice(order, db);
+  if (!beforeInvoice) db_.save();
+
   res.json({
     order: {
       id: order.id,
@@ -1133,6 +1171,23 @@ api.get('/api/orders/:id', (req, res) => {
       },
       plantPreference: order.plantPreference,
       statusHistory: order.statusHistory ?? [],
+      invoice: {
+        number: invoice.number,
+        issuedAt: invoice.issuedAt,
+        status: invoiceStatus(order),
+        url: invoiceUrl(order),
+        amounts: (() => {
+          const amounts = invoiceAmounts(order);
+          return {
+            totalUsd: amounts.total,
+            depositUsd: amounts.deposit,
+            paidUsd: amounts.paidUsd,
+            awaitingUsd: amounts.awaitingUsd,
+            outstandingUsd: amounts.outstandingUsd,
+            balanceUsd: amounts.balance,
+          };
+        })(),
+      },
     },
     events,
   });
@@ -1242,6 +1297,19 @@ function decorateOrder(order) {
     },
     plantPayload: buildPlantPayload(order),
     plantPayloadText: plantPayloadText(order),
+    // The console always sees the margin, even though client documents never do.
+    margin: {
+      managementFeeUsd: order.quote.managementFee ?? null,
+      rate: order.quote.managementFeeRate ?? null,
+    },
+    invoice: order.invoice
+      ? {
+          number: order.invoice.number,
+          issuedAt: order.invoice.issuedAt,
+          status: invoiceStatus(order),
+          url: invoiceUrl(order),
+        }
+      : null,
   };
 }
 
@@ -1825,6 +1893,17 @@ api.patch('/api/admin/shop/orders/:id', requireAdmin, (req, res) => {
 api.patch('/api/admin/shop/stock/:releaseId', requireAdmin, (req, res) => {
   const result = setReleaseStock(req.params.releaseId, req.body?.stock);
   res.status(result.status).json(result.body);
+});
+
+api.get('/api/admin/orders/:id/invoice', requireAdmin, (req, res) => {
+  const db = db_.data;
+  const order = db.orders.find((item) => item.id === req.params.id);
+  if (!order) return res.status(404).json({ error: 'Order not found.' });
+  const before = order.invoice?.number;
+  const invoice = ensureInvoice(order, db);
+  if (!before) db_.save();
+  res.setHeader('Cache-Control', 'no-store');
+  res.type('text/html').send(renderInvoiceHtml(order, invoice));
 });
 
 api.get('/api/admin/orders/:id/payload', requireAdmin, (req, res) => {

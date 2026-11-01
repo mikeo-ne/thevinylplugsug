@@ -359,6 +359,28 @@ record just sold out.
 The console's **System** panel says which driver is live, whether it survives a deploy, and how many
 rows it holds — and `GET /api/health` reports the same thing publicly (no secrets) for uptime checks.
 
+### The invoice, and the WhatsApp hand-off
+
+Every order now gets a numbered invoice the moment it exists — `7H-INV-0001`, never renumbered, so
+the page can be shared, printed and filed against a payment without the number moving under it.
+
+- **`GET /api/orders/:id/invoice`** (and `/api/admin/orders/:id/invoice` for the console) returns a
+  printable HTML page: letterhead, order reference, production spec, files with their checksums, the
+  money, and a payment-history ledger that grows as the wallet reports collections. Print to PDF from
+  the browser. `no-store` and `noindex` are set; the order reference is the only key, exactly like
+  the order status page.
+- **One price, all-in.** Client-facing documents show *pressing, freight to Kampala and handling* and
+  a single total. The brokerage margin is on the console only (`margin` on each order, and the
+  **Margin** row in the order panel). This is deliberate — see `BRIEF-2026-11-01.md`, point 5.
+- **WhatsApp without a Meta account.** `wa.me` links carry the order, the invoice and the deposit
+  into a chat with the message pre-filled. No token, no template approval, works on a phone that has
+  never heard of the Cloud API. `WHATSAPP_TOKEN` + `WHATSAPP_PHONE_ID` are only needed for
+  *server-sent* alerts, and until they exist the console reports the channel as **click-to-chat**
+  rather than a fault.
+- **USSD for feature phones.** The manual deposit block now offers a `tel:` link to `*165*3#` /
+  `*185*9#` (`#` percent-encoded, or the dialler truncates the code) alongside the merchant number and
+  reference, for a wallet the collection rail cannot reach.
+
 ### Taking the deposit by mobile money
 
 The deposit block used to be paperwork: a merchant number, a `*165*3#` instruction and a reference the
@@ -429,6 +451,8 @@ npm run build
 npm run test:serverless   # boots api/index.js with VERCEL=1
 npm run test:db           # Postgres (PGlite) + Redis drivers, schema, atomic stock
 npm run test:alerts       # every alert channel against a local sink, incl. retries
+npm run test:payments     # wallet rails + chunked uploads, against a local sink
+npm run test:invoice      # numbering, all-in page, WhatsApp hand-off, no margin leak
 node scripts/smoke.mjs    # needs the app running on :4173
 node scripts/flow.mjs
 ```
@@ -448,6 +472,9 @@ npx vercel --prod
 
 - [ ] `https://<project>.vercel.app` loads the hero and the lime configurator updates totals.
 - [ ] `/order` completes and lands on `/order/7H-XXXX` with deposit instructions.
+- [ ] The success page shows `Invoice 7H-INV-0001`; opening it prints cleanly, and the **Send on
+      WhatsApp** button opens a chat with the reference and total already written.
+- [ ] That invoice contains no percentage fee and no factory-cost line.
 - [ ] `/admin` accepts your new `ADMIN_PASSCODE`, shows the order, and the webhook log resolves.
 - [ ] "Forward" produces the plant payload and flips the order to **Sent to plant**.
 - [ ] Custom domain added (Vercel → Domains) and `ADMIN_PASSCODE` rotated away from the demo value.

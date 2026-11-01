@@ -5,8 +5,8 @@ import { whatsappUrl } from '../../lib/contact';
 
 const faqs = [
   {
-    q: 'What does the 25% management fee actually cover?',
-    a: 'Everything between you and the press: mastering review, artwork pre-flight for CMYK and bleed, plant negotiation and scheduling, proof handling, freight booking, customs brokerage and last-mile delivery in Kampala. It is calculated on the landed factory cost, not on the retail value.',
+    q: 'What is included in the all-in price?',
+    a: 'Everything between you and the press: mastering review, artwork pre-flight for CMYK and bleed, plant negotiation and scheduling, proof handling, freight booking, customs clearance and last-mile delivery in Kampala. It is charged on the factory cost of your run, never on the retail value of the records.',
   },
   {
     q: 'When do I pay, and how much?',

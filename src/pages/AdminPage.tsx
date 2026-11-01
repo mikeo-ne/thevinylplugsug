@@ -487,11 +487,11 @@ export function AdminPage() {
                     />
                     <Detail label="Per record" value={usd(selected.quote.perUnit, { cents: true })} />
                     <Detail
-                      label="Money"
-                      value={`Factory ${usd(selected.quote.factoryCost, { cents: true })} + fee ${usd(
-                        selected.quote.managementFee,
+                      label="Margin"
+                      value={`${usd(selected.quote.managementFee, { cents: true })} of ${usd(
+                        selected.quote.total,
                         { cents: true },
-                      )}`}
+                      )} (${Math.round((selected.quote.managementFeeRate ?? 0.25) * 100)}%) · client never sees this line`}
                     />
                     <Detail label="Deposit" value={`${usd(selected.quote.deposit, { cents: true })} · ${statusLabel(selected.payment.status)}`} />
                   </Panel>
@@ -735,6 +735,17 @@ export function AdminPage() {
                       Email brief
                     </button>
 
+                    <a
+                      href={`/api/admin/orders/${selected.id}/invoice`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="btn-dark text-[11.5px]"
+                      title="The client-facing invoice — all-in price, no margin line"
+                    >
+                      <Icon name="printer" size={13} className="text-lime" />
+                      {selected.invoice?.number ?? 'Invoice'}
+                    </a>
+
                     <button
                       type="button"
                       onClick={() => copyPayload(selected)}
@@ -824,21 +835,25 @@ export function AdminPage() {
               {(overview?.channels ?? []).map((channel) => {
                 const state = channel.status ?? (channel.live ? 'untested' : 'unconfigured');
                 const tone =
-                  state === 'proven'
-                    ? 'border-lime/30 bg-lime/[0.08] text-lime'
+                  channel.clickToChat
+                    ? 'border-sky-400/30 bg-sky-400/[0.07] text-sky-200'
+                    : state === 'proven'
+                      ? 'border-lime/30 bg-lime/[0.08] text-lime'
                     : state === 'degraded'
                       ? 'border-red-400/30 bg-red-400/[0.07] text-red-300'
                       : state === 'untested'
                         ? 'border-amber-400/30 bg-amber-400/[0.06] text-amber-200'
                         : 'border-white/10 text-muted';
                 const label =
-                  state === 'proven'
-                    ? 'proven'
-                    : state === 'degraded'
-                      ? 'failing'
-                      : state === 'untested'
-                        ? 'unproven'
-                        : 'off';
+                  channel.clickToChat
+                    ? 'click-to-chat'
+                    : state === 'proven'
+                      ? 'proven'
+                      : state === 'degraded'
+                        ? 'failing'
+                        : state === 'untested'
+                          ? 'unproven'
+                          : 'off';
                 return (
                   <span
                     key={channel.channel}

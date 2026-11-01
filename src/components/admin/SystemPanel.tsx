@@ -215,6 +215,9 @@ export function SystemPanel() {
     untested: { label: 'not proven', className: 'bg-amber-400/[0.1] text-amber-200' },
     degraded: { label: 'failing', className: 'bg-red-400/[0.12] text-red-300' },
     unconfigured: { label: 'not set up', className: 'bg-white/[0.06] text-muted' },
+    // WhatsApp without a token is a working mode, not a missing one: wa.me links
+    // carry every order, invoice and deposit hand-off already.
+    click_to_chat: { label: 'click-to-chat', className: 'bg-sky-400/[0.1] text-sky-200' },
   };
   const outbox = system?.alerts.outbox;
 
@@ -316,7 +319,12 @@ export function SystemPanel() {
               const channelEnv = env.find((entry) => entry.channel === channel.channel);
               const result = results?.find((entry) => entry.channel === channel.channel);
               const proof = proofFor(channel.channel);
-              const badge = BADGE[proof?.status ?? (channel.live ? 'untested' : 'unconfigured')];
+              const badge =
+                BADGE[
+                  proof?.mode === 'click_to_chat'
+                    ? 'click_to_chat'
+                    : proof?.status ?? (channel.live ? 'untested' : 'unconfigured')
+                ];
               return (
                 <li key={channel.channel} className="rounded-lg border border-white/[0.07] bg-white/[0.02] px-3 py-2">
                   <div className="flex items-center justify-between gap-2">

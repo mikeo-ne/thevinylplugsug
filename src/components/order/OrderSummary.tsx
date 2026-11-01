@@ -105,14 +105,16 @@ export function OrderSummary({ onEdit }: { onEdit?: (step: number) => void }) {
 
       <div className="border-t border-white/[0.07] px-5 py-4">
         <OnDemandNotice className="mb-4" />
+        {/* One all-in line, by design: pressing, freight and handling are what the
+            client is buying. The margin is tracked on the console, never here. */}
         <dl className="space-y-2 text-[12.5px]">
-          <div className="flex justify-between">
-            <dt className="text-muted">Factory cost</dt>
-            <dd className="num text-bone/85">{usd(quote.factoryCost, { cents: true })}</dd>
+          <div className="flex justify-between gap-3">
+            <dt className="text-muted">Pressing, freight &amp; handling</dt>
+            <dd className="num shrink-0 text-bone/85">{usd(quote.factoryCost, { cents: true })}</dd>
           </div>
-          <div className="flex justify-between">
-            <dt className="text-muted">Management fee · 25%</dt>
-            <dd className="num text-bone/85">{usd(quote.managementFee, { cents: true })}</dd>
+          <div className="flex justify-between gap-3">
+            <dt className="text-muted">Freight to Kampala, customs &amp; handling</dt>
+            <dd className="num shrink-0 text-bone/85">{usd(quote.managementFee, { cents: true })}</dd>
           </div>
         </dl>
 

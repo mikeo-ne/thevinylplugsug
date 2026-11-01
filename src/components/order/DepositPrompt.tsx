@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../../lib/api';
+import { depositWhatsAppLink, ussdCodeFor, ussdDialUrl } from '../../lib/handoff';
 import { Icon } from '../ui/Icon';
 import type { DepositIntent, Order, PaymentMethod } from '../../types';
 
@@ -201,19 +202,53 @@ export function DepositPrompt({
           <span className="text-bone">Paying by hand:</span>{' '}
           {provider === 'mtn_momo' ? (
             <>
-              dial <span className="text-bone">*165*3#</span> → Pay Merchant →{' '}
+              dial <span className="text-bone">{ussdCodeFor('mtn_momo')}</span> → Pay Merchant →{' '}
               <span className="num text-bone">{method?.accountNumber}</span>, reference{' '}
               <span className="text-bone">{order.id}</span>.
             </>
           ) : (
             <>
-              dial <span className="text-bone">*185*9#</span> → Pay Bill →{' '}
+              dial <span className="text-bone">{ussdCodeFor('airtel_money')}</span> → Pay Bill →{' '}
               <span className="num text-bone">{method?.accountNumber}</span>, reference{' '}
               <span className="text-bone">{order.id}</span>.
             </>
           )}{' '}
           Then send the receipt on WhatsApp and management records it.
+
+          {/* A tel: link means the client taps once instead of retyping a code that
+              their dialler cannot parse once the # is stripped. */}
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <a
+              className="btn-ghost h-8 px-2.5 text-[11px]"
+              href={ussdDialUrl(ussdCodeFor(provider))}
+            >
+              <Icon name="send" size={12} />
+              Open {ussdCodeFor(provider)}
+            </a>
+            <a
+              className="btn-ghost h-8 px-2.5 text-[11px]"
+              href={depositWhatsAppLink(order)}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <Icon name="whatsapp" size={12} />
+              Message the desk
+            </a>
+          </div>
         </div>
+      )}
+
+      {/* Paid, or prompt approved: the receipt goes into the chat the desk reads. */}
+      {(paid || intent?.status === 'successful') && (
+        <a
+          className="btn-ghost h-9 px-3 text-[11.5px]"
+          href={depositWhatsAppLink(order, { paid: true })}
+          target="_blank"
+          rel="noreferrer"
+        >
+          <Icon name="whatsapp" size={13} />
+          Send proof of payment on WhatsApp
+        </a>
       )}
     </div>
   );

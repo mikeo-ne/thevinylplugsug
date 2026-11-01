@@ -286,11 +286,23 @@ export function channelVerification({ channels = null } = {}) {
       detail = 'An attempt is in flight — the result will land here.';
     }
 
+    // WhatsApp without a token is not broken — it is click-to-chat. Exposing that
+    // as its own mode is what lets the console print information instead of a
+    // fault for something that is working exactly as designed.
+    const mode =
+      entry.channel === 'whatsapp' && status === 'unconfigured'
+        ? 'click_to_chat'
+        : status === 'unconfigured'
+          ? 'not_set_up'
+          : 'api';
+
     return {
       channel: entry.channel,
       ready: entry.ready,
       verified: status === 'proven',
       status,
+      mode,
+      notFault: mode === 'click_to_chat',
       fingerprint,
       proofAt: current?.deliveredAt ?? (current?.status === 'delivered' ? current?.lastAttemptAt : null) ?? null,
       lastAttemptAt: current?.lastAttemptAt ?? null,
@@ -810,6 +822,9 @@ export function notificationChannels() {
       ready: proof?.ready ?? entry.live,
       verified: proof?.verified ?? false,
       status: proof?.status ?? 'untested',
+      // WhatsApp with no token is working, through wa.me links. Say so, so the
+      // console can print information instead of a fault.
+      clickToChat: proof?.mode === 'click_to_chat',
       proofAt: proof?.proofAt ?? null,
       lastError: proof?.lastError ?? null,
       ...(entry.channel === 'plant' ? { autoDeliver: automationConfig().autoForward } : {}),
