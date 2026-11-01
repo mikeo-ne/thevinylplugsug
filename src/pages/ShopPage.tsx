@@ -100,16 +100,19 @@ export function ShopPage() {
   const cartNote = note(total);
 
   const addToBag = (release: ShopRelease) => {
-    const limit = Math.min(release.maxPerOrder, release.stock);
-    if (limit < 1) {
+    // The server decides what may be bought: shelf stock, a pre-order, or nothing.
+    const limit = release.maxPerOrder;
+    if (!release.canBuy || limit < 1) {
       notify(`${release.title} is sold out — join the restock list on WhatsApp.`, 'error');
       return;
     }
     if (bag.quantityOf(release.id) + 1 > limit) {
       notify(
-        release.stock <= release.maxPerOrder
-          ? `Only ${release.stock} left of ${release.title}.`
-          : `We cap each record at ${release.maxPerOrder} copies per order.`,
+        release.preorderActive
+          ? `We cap each record at ${release.maxPerOrder} copies per order.`
+          : release.stock <= release.maxPerOrder
+            ? `Only ${release.stock} left of ${release.title}.`
+            : `We cap each record at ${release.maxPerOrder} copies per order.`,
         'error',
       );
       return;
@@ -119,8 +122,7 @@ export function ShopPage() {
   };
 
   const setQuantity = (release: ShopRelease, quantity: number) => {
-    const limit = Math.min(release.maxPerOrder, release.stock);
-    bag.setQuantity(release.id, Math.min(quantity, limit));
+    bag.setQuantity(release.id, Math.min(quantity, release.maxPerOrder));
   };
 
   const validate = (): Errors => {
@@ -214,7 +216,8 @@ export function ShopPage() {
                   <Icon name="globe" size={12} className="text-lime" /> Tracked worldwide
                 </span>
                 <span className="chip">
-                  <Icon name="shield" size={12} className="text-lime" /> Real pressings, real stock
+                  <Icon name="shield" size={12} className="text-lime" /> Real pressings — shelf stock and
+                  pre-orders are labelled
                 </span>
               </div>
             </div>
@@ -271,7 +274,11 @@ export function ShopPage() {
                       <span className="absolute left-2 top-2 rounded-full bg-black/60 px-2 py-0.5 text-[8.5px] font-semibold uppercase tracking-[0.12em] text-bone/85 backdrop-blur-sm">
                         {release.format}
                       </span>
-                      {release.soldOut ? (
+                      {release.preorderActive ? (
+                        <span className="absolute right-2 top-2 rounded-full bg-sky-400 px-2 py-0.5 text-[8.5px] font-semibold uppercase tracking-[0.12em] text-ink">
+                          Pre-order
+                        </span>
+                      ) : release.soldOut ? (
                         <span className="absolute right-2 top-2 rounded-full bg-white/15 px-2 py-0.5 text-[8.5px] font-semibold uppercase tracking-[0.12em] text-bone">
                           Sold out
                         </span>
@@ -306,9 +313,14 @@ export function ShopPage() {
                         {shelfNote(release.priceUsd) && (
                           <div className="mt-1 text-[10.5px] text-muted">{shelfNote(release.priceUsd)}</div>
                         )}
+                        {release.preorderActive && (
+                          <div className="mt-1 text-[10.5px] text-sky-200" title={release.availability?.note ?? undefined}>
+                            {release.availabilityDetail ?? 'Ships when pressed'}
+                          </div>
+                        )}
                       </div>
 
-                      {release.soldOut ? (
+                      {!release.canBuy ? (
                         <a
                           href={whatsappUrl(`Hi 7H — tell me when ${release.title} (${release.release}) is back in stock.`)}
                           target="_blank"
@@ -332,7 +344,7 @@ export function ShopPage() {
                             type="button"
                             aria-label={`Add one ${release.title}`}
                             onClick={() => addToBag(release)}
-                            disabled={inBag >= Math.min(release.maxPerOrder, release.stock)}
+                            disabled={inBag >= release.maxPerOrder}
                             className="grid h-7 w-7 place-items-center rounded-full text-lime hover:bg-lime/15 disabled:opacity-30"
                           >
                             <Icon name="plus" size={13} />

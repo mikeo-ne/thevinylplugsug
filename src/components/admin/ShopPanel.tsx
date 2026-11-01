@@ -22,6 +22,8 @@ export function ShopPanel() {
   const [busy, setBusy] = useState<string | null>(null);
   const [filter, setFilter] = useState<'open' | 'all' | 'awaiting'>('open');
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  // Pre-order dates being typed, keyed by release; empty means "not editing".
+  const [ships, setShips] = useState<Record<string, string>>({});
 
   const load = useCallback(
     async (announce = false) => {
@@ -80,6 +82,32 @@ export function ShopPanel() {
           .adminSetStock(releaseId, Number(drafts[releaseId] ?? 0))
           .then(() => undefined),
       'Stock updated.',
+    );
+
+  const defaultShipDate = () => {
+    const stamp = new Date();
+    stamp.setDate(stamp.getDate() + 90);
+    return stamp.toISOString().slice(0, 10);
+  };
+
+  const startPreorder = (releaseId: string) =>
+    act(
+      `pre-${releaseId}`,
+      () =>
+        api
+          .adminSetPreorder(releaseId, {
+            shipsOn: ships[releaseId] || defaultShipDate(),
+            note: 'Pressed for this order — ships as soon as the run lands.',
+          })
+          .then(() => undefined),
+      'On pre-order — the storefront now says when it ships.',
+    );
+
+  const endPreorder = (releaseId: string) =>
+    act(
+      `pre-${releaseId}`,
+      () => api.adminClearPreorder(releaseId).then(() => undefined),
+      'Pre-order closed — the card shows shelf stock again.',
     );
 
   if (!shop) {
@@ -279,13 +307,46 @@ export function ShopPanel() {
                   >
                     Save
                   </button>
+                  {row.preorder ? (
+                    <button
+                      type="button"
+                      onClick={() => endPreorder(row.releaseId)}
+                      disabled={busy === `pre-${row.releaseId}`}
+                      title={`Ships ${row.preorder.shipsOn}`}
+                      className="rounded-full border border-sky-400/40 bg-sky-400/[0.08] px-2.5 py-1 text-[10px] font-medium text-sky-200 hover:bg-sky-400/[0.14] disabled:opacity-40"
+                    >
+                      Pre-order · end
+                    </button>
+                  ) : (
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="date"
+                        value={ships[row.releaseId] ?? ''}
+                        onChange={(event) =>
+                          setShips((current) => ({ ...current, [row.releaseId]: event.target.value }))
+                        }
+                        aria-label={`Pre-order ship date for ${row.title}`}
+                        className="w-[112px] rounded-lg border border-white/10 bg-black/30 px-1.5 py-1 text-[10px] text-bone focus:border-sky-400/50 focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => startPreorder(row.releaseId)}
+                        disabled={busy === `pre-${row.releaseId}`}
+                        className="rounded-full border border-white/10 px-2.5 py-1 text-[10px] font-medium text-muted hover:border-sky-400/40 hover:text-sky-200 disabled:opacity-40"
+                      >
+                        Pre-order
+                      </button>
+                    </div>
+                  )}
                 </li>
               );
             })}
           </ul>
           <p className="mt-3 text-[10px] leading-relaxed text-muted/80">
             Stock decrements itself on every sale. Cancelling an order puts its records back; use
-            Save here after a restock lands.
+            Save here after a restock lands. A <span className="text-sky-200">pre-order</span> sells a
+            record before it is pressed: the shop says &ldquo;Pre-order · ships &lt;date&gt;&rdquo;, takes the
+            order, and leaves the shelf count alone.
           </p>
         </div>
       </div>

@@ -461,6 +461,45 @@ an order waits for the plant's real quote, instead of only "unverified" — the
 loss guard itself is unchanged: a real invoice above the client's price still
 blocks the forward with `409 loss_risk`.
 
+### The studio desk: drafts, desk uploads and pre-orders
+
+Round C is the studio side — the work that happens before a client fills in a form.
+
+**Draft orders.** `POST /api/admin/orders` (`requireAdmin`) builds an order for a
+client the desk agreed it with on the phone: name, email, WhatsApp, run size,
+format, sleeve. It is priced by the same shared engine the site uses, so a draft
+can never quote a different number from the configurator, and it is invoiced
+immediately as a **provisional** invoice (`7H-INV-…`, marked provisional while
+`status: 'draft'`). Drafts fire **no alerts** and cannot reach a plant: the
+deposit gate applies exactly as it does to a client-submitted order. In the
+console, **Studio desk** → *New draft order* builds one; *Client confirmed*
+moves it to `received`.
+
+**Files on the client's behalf.** The desk uploads with the same chunked pipeline
+the client uses (`POST /api/uploads`), then `POST /api/admin/orders/:id/files`
+with `{ uploadIds: [...] }` attaches those uploads to the order — the record is
+re-filed under the order, so a WAV that arrived on WhatsApp ends up on the order
+rather than in a downloads folder. `audioLink` / `artworkLink` can be set the
+same way.
+
+**Pre-orders.** Some records are sold before they exist. The console sets a ship
+date on a release (`PUT /api/admin/shop/preorder/:releaseId`, `DELETE` to close),
+and the storefront then says **Pre-order · ships 15 December 2026** instead of
+inventing a stock count. A pre-order:
+
+- is buyable at zero stock (`availability.state === 'preorder'`, `canBuy: true`);
+- is **never** counted, reserved or decremented as shelf stock;
+- marks the sale (`order.containsPreorder`, per-line `preorder` + `shipsOn`) so a
+  packer never goes looking for a record that has not been pressed.
+
+The three states a card can be in — `in_stock`, `preorder`, `sold_out` — are
+decided in one place, `availabilityFor()` in `shared/shop.js`, so the shop page,
+the API and the checkout cannot disagree.
+
+**Tests.** `npm run test:studio` (49 checks) covers drafts, the deposit gate on a
+draft, desk uploads, and the whole pre-order lifecycle including the shelf count
+staying at zero.
+
 ### The plant desk: six intake forms, one sheet
 
 Points 5 and 6 of the 1 November brief, answered together because they are the same

@@ -94,6 +94,60 @@ export const SHOP_RELEASES = [
 /** Nobody needs six copies of the same record from one checkout. */
 export const MAX_PER_RELEASE = 5;
 
+/**
+ * What a shopper is allowed to believe about a record.
+ *
+ * The shop mixes three very different things, and until now all three looked the
+ * same: records physically on the shelf in Kampala, records still being pressed
+ * (a pre-order), and nothing at all. A pre-order is a promise, not stock — so it
+ * says so on the card, it does not pretend to have "3 left", and it never
+ * decrements a shelf count that does not exist.
+ */
+export function availabilityFor({ stock = 0, preorder = null } = {}) {
+  const onShelf = Math.max(0, Math.floor(Number(stock) || 0));
+  if (preorder && preorder.shipsOn) {
+    return {
+      state: 'preorder',
+      label: 'Pre-order',
+      detail: `Ships ${formatShipsOn(preorder.shipsOn)}`,
+      shipsOn: preorder.shipsOn,
+      note: preorder.note ?? null,
+      canBuy: true,
+      maxPerOrder: MAX_PER_RELEASE,
+      countedAsStock: false,
+    };
+  }
+  if (onShelf > 0) {
+    return {
+      state: 'in_stock',
+      label: onShelf <= 5 ? `${onShelf} left` : 'In stock',
+      detail: onShelf <= 5 ? `Only ${onShelf} on the shelf` : 'On the shelf in Kampala',
+      shipsOn: null,
+      note: null,
+      canBuy: true,
+      maxPerOrder: Math.min(MAX_PER_RELEASE, onShelf),
+      countedAsStock: true,
+    };
+  }
+  return {
+    state: 'sold_out',
+    label: 'Sold out',
+    detail: 'Restocking — join the list',
+    shipsOn: null,
+    note: null,
+    canBuy: false,
+    maxPerOrder: 0,
+    countedAsStock: false,
+  };
+}
+
+/** A pre-order date a human can read, from an ISO day. */
+export function formatShipsOn(isoDay) {
+  const stamp = new Date(`${String(isoDay).slice(0, 10)}T12:00:00Z`);
+  if (Number.isNaN(stamp.getTime())) return 'soon';
+  return stamp.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
+}
+
 /** Where we can actually get a record to, and what it costs. */
 export const DELIVERY_OPTIONS = [
   {

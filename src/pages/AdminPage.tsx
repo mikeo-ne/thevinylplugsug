@@ -12,6 +12,7 @@ import { FilesPanel } from '../components/admin/FilesPanel';
 import { PlantDesk } from '../components/admin/PlantDesk';
 import { PaymentsPanel } from '../components/admin/PaymentsPanel';
 import { PriceFloorPanel } from '../components/admin/PriceFloorPanel';
+import { StudioPanel } from '../components/admin/StudioPanel';
 import { Logo } from '../components/ui/Logo';
 
 const channelIcon: Record<string, IconName> = {
@@ -805,6 +806,9 @@ export function AdminPage() {
             )}
           </section>
         </div>
+
+        {/* build an order for a client, and hold it as a draft */}
+        <StudioPanel />
 
         {/* every plant's price against ours, and the floor it sets */}
         <PriceFloorPanel />

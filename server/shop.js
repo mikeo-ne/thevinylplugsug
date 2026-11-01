@@ -12,6 +12,7 @@
 import { COMPANY, FX_UGX_PER_USD, PAYMENT_METHODS } from './config.js';
 import { db_, newShopOrderId } from './store.js';
 import {
+  availabilityFor,
   DELIVERY_OPTIONS,
   MAX_PER_RELEASE,
   SHOP_ORDER_STATUSES,
@@ -35,8 +36,51 @@ const shop = () => {
   if (!db.shop) db.shop = { stock: {}, orders: [] };
   if (!db.shop.stock) db.shop.stock = {};
   if (!Array.isArray(db.shop.orders)) db.shop.orders = [];
+  if (!db.shop.preorders || typeof db.shop.preorders !== 'object') db.shop.preorders = {};
   return db.shop;
 };
+
+/**
+ * Pre-orders: a record we are selling before it exists on the shelf.
+ *
+ * Set from the console against a real release, with the day it is expected to
+ * ship. It does not touch stock — a pre-order is a promise, so it is never
+ * counted, never reserved and never "3 left".
+ */
+export const preorderOf = (releaseId) => {
+  const entry = shop().preorders[releaseId];
+  if (!entry || !entry.shipsOn) return null;
+  return { shipsOn: entry.shipsOn, note: entry.note ?? null, setAt: entry.setAt ?? null, setBy: entry.setBy ?? null };
+};
+
+export function setPreorder(releaseId, { shipsOn, note } = {}, operator = 'admin') {
+  const release = shopReleaseById(releaseId);
+  if (!release) return { error: 'No such release.' };
+  const day = String(shipsOn ?? '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || Number.isNaN(new Date(`${day}T12:00:00Z`).getTime())) {
+    return { error: 'Give the day it is expected to ship (YYYY-MM-DD).' };
+  }
+  if (new Date(`${day}T12:00:00Z`).getTime() < Date.now() - 86400000) {
+    return { error: 'That date is in the past — a pre-order has to ship in the future.' };
+  }
+  const state = shop();
+  state.preorders[releaseId] = {
+    shipsOn: day,
+    note: typeof note === 'string' ? note.trim().slice(0, 200) : null,
+    setAt: new Date().toISOString(),
+    setBy: String(operator ?? 'admin'),
+  };
+  db_.save();
+  return { preorder: state.preorders[releaseId] };
+}
+
+export function clearPreorder(releaseId) {
+  const state = shop();
+  if (!state.preorders[releaseId]) return { error: 'That release is not on pre-order.' };
+  delete state.preorders[releaseId];
+  db_.save();
+  return { ok: true };
+}
 
 /** Live count on the shelf. Missing entries fall back to the opening count. */
 export const stockOf = (releaseId) => {
@@ -58,12 +102,21 @@ const writeStock = (releaseId, quantity) => {
 export function shopCatalogueWithStock() {
   return shopCatalogue().map((release) => {
     const stock = stockOf(release.id);
+    const preorder = preorderOf(release.id);
+    const availability = availabilityFor({ stock, preorder });
     return {
       ...release,
       stock,
-      soldOut: stock <= 0,
-      lowStock: stock > 0 && stock <= 5,
-      maxPerOrder: Math.min(MAX_PER_RELEASE, stock),
+      preorder,
+      availability,
+      soldOut: availability.state === 'sold_out',
+      lowStock: availability.state === 'in_stock' && stock <= 5,
+      preorderActive: availability.state === 'preorder',
+      canBuy: availability.canBuy,
+      maxPerOrder: availability.maxPerOrder,
+      /** What a buyer is told on the card, including the ship date. */
+      availabilityLabel: availability.label,
+      availabilityDetail: availability.detail,
     };
   });
 }
@@ -98,6 +151,7 @@ export function shopOrderView(order) {
       phone: order.buyer.phone.replace(/(\d{3})\d+(\d{2})$/, '$1 ••• $2'),
     },
     items: order.items,
+    containsPreorder: Boolean(order.containsPreorder),
     records: order.records,
     subtotal: order.subtotal,
     shipping: order.shipping,
@@ -175,8 +229,17 @@ export async function placeShopOrder(body = {}, fxRate = FX_UGX_PER_USD) {
     });
   }
 
+  // A pre-order is a promise, not a shelf count: it skips both the stock check
+  // and the reservation, and it never decrements anything.
+  const preorders = new Map(
+    quote.lines
+      .map((line) => [line.releaseId, preorderOf(line.releaseId)])
+      .filter(([, entry]) => Boolean(entry)),
+  );
+  const physical = quote.lines.filter((line) => !preorders.has(line.releaseId));
+
   // Stock is the only thing that can still say no.
-  for (const line of quote.lines) {
+  for (const line of physical) {
     const left = stockOf(line.releaseId);
     if (line.quantity > left) {
       const release = shopReleaseById(line.releaseId);
@@ -199,7 +262,15 @@ export async function placeShopOrder(body = {}, fxRate = FX_UGX_PER_USD) {
     channel: 'shop',
     status: 'placed',
     buyer: { name, email, phone, notes },
-    items: quote.lines,
+    // Each line says whether it is a record off the shelf or one still to be
+    // pressed, and when that one ships.
+    items: quote.lines.map((line) => {
+      const preorder = preorders.get(line.releaseId) ?? null;
+      return preorder
+        ? { ...line, preorder: true, shipsOn: preorder.shipsOn, availability: `Pre-order — ships ${preorder.shipsOn}` }
+        : { ...line, preorder: false, shipsOn: null };
+    }),
+    containsPreorder: preorders.size > 0,
     records: quote.records,
     subtotal: quote.subtotal,
     shipping: quote.shipping,
@@ -239,9 +310,9 @@ export async function placeShopOrder(body = {}, fxRate = FX_UGX_PER_USD) {
   // Take the records out of stock *in the database* before the order exists.
   // The loop above explains nicely what is short; this is the part that actually
   // holds the line when two fans tap Buy on the last copy at the same moment.
-  const reservation = await db_.reserve(
-    quote.lines.map((line) => ({ releaseId: line.releaseId, quantity: line.quantity })),
-  );
+  const reservation = physical.length
+    ? await db_.reserve(physical.map((line) => ({ releaseId: line.releaseId, quantity: line.quantity })))
+    : { ok: true };
   if (!reservation.ok) {
     const release = shopReleaseById(reservation.releaseId);
     const left = Math.max(0, Number(reservation.available ?? 0));
@@ -255,7 +326,7 @@ export async function placeShopOrder(body = {}, fxRate = FX_UGX_PER_USD) {
   }
   if (!reservation.stock) {
     // The file driver keeps its own copy; nothing outside this process can race.
-    for (const line of quote.lines) {
+    for (const line of physical) {
       writeStock(line.releaseId, stockOf(line.releaseId) - line.quantity);
     }
   }
@@ -316,6 +387,7 @@ export function adminShopOverview() {
       stock: stockOf(release.id),
       sold: Math.max(0, release.stock - stockOf(release.id)),
       lowStock: stockOf(release.id) > 0 && stockOf(release.id) <= 5,
+      preorder: preorderOf(release.id),
     })),
   };
 }
