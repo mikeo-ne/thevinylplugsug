@@ -30,18 +30,49 @@ export interface Quote {
     pressingCost: number;
     sleeveCost: number;
     setupCost: number;
-    /** Plant rate-card adjustment (negative for GZ at volume, positive for premium houses). */
+    /** Retired with cost-based pricing: always 0, kept for stored orders. */
     plantAdjustment: number;
     plantFactor: number;
+    /** Charged when the chosen plant prices above the derived rate card. */
+    plantUplift?: number;
     unitPrice: number;
     sleevePerUnit: number;
   };
+  /** The cost model behind the price: plant invoice, landed add-ons, margin. */
+  cost?: QuoteCost;
   vinylType: VinylType;
   sleeve: SleeveOption;
   plant: Plant;
   /** True when the requested plant could not take the run and we moved it. */
   plantAdjusted?: boolean;
   requestedPlant?: string | null;
+}
+
+export interface QuoteCost {
+  plant: {
+    id: string;
+    name: string;
+    /** 'quoted' | 'modelled' | 'estimate' — how the plant price was established. */
+    confidence: string;
+    source: string;
+    invoiceUsd: number;
+    perUnit: number;
+  };
+  rateCardUsd: number;
+  plantUplift: number;
+  weightKg: number;
+  mode: 'sea' | 'courier';
+  freightUsd: number;
+  dutyUsd: number;
+  vatUsd: number;
+  clearanceUsd: number;
+  addOnsUsd: number;
+  landedUsd: number;
+  marginUsd: number;
+  grossMarginUsd: number;
+  netMarginUsd: number;
+  effectiveFeeRate: number;
+  clearsFloor: boolean;
 }
 
 export interface VinylType {
@@ -417,6 +448,11 @@ export interface PlantSheet {
 export interface PlantMargin {
   status: 'unverified' | 'safe' | 'loss';
   revenueUsd: number;
+  /** Modelled floor from the quote's cost model, shown while no plant quote exists. */
+  estimatedLandedUsd?: number | null;
+  estimatedMarginUsd?: number | null;
+  estimatedSource?: string | null;
+  costModel?: string | null;
   costUsd: number | null;
   freightUsd: number | null;
   dutiesUsd: number | null;
@@ -818,4 +854,35 @@ export interface RatesSnapshot {
   currencies: CurrencyCode[];
   cached?: boolean;
   errors?: string[];
+}
+
+/** One plant's price for the reference basket at one run size. */
+export interface PriceReferenceLine {
+  plantId: string;
+  plantName: string;
+  /** 'quoted' | 'modelled' | 'estimate' */
+  confidence: string;
+  factoryUsd: number;
+  landedUsd: number;
+  landedPerUnitUsd: number;
+  /** Our price minus this plant's landed cost — never negative. */
+  coverUsd: number | null;
+  clearsFloor: boolean;
+}
+
+export interface PriceReferenceRow {
+  quantity: number;
+  ourPriceUsd: number | null;
+  ourPerUnitUsd: number | null;
+  /** The dearest plant that will take the run — what our price must clear. */
+  bindingFloorUsd: number | null;
+  lines: PriceReferenceLine[];
+}
+
+export interface PriceReference {
+  vinylTypeId: string;
+  sleeveId: string;
+  generatedAt: string;
+  clearsFloor: boolean;
+  rows: PriceReferenceRow[];
 }

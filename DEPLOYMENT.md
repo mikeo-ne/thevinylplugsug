@@ -41,6 +41,13 @@ Once `main` is up to date, any Vercel project connected to this repository deplo
 | `FX_CACHE_SECONDS` | no     | `3600`                               | How long a fetched rate is reused                  |
 | `FX_STALE_SECONDS` | no     | `21600`                              | How long a stale rate may still be quoted in an outage |
 | `FX_UGX_FLOOR`   | no       | `4360`                               | Never quote UGX below this, whatever the market does |
+| `FREIGHT_USD_PER_KG` | no  | `3.2`                                | Sea/consolidated freight per shipped kg to Kampala. Feeds the price floor |
+| `FREIGHT_MIN_USD` | no     | `180`                                | Pallet minimum, because freight is never free      |
+| `FREIGHT_COURIER_USD_PER_KG` / `FREIGHT_COURIER_MIN_USD` | no | `11` / `45` | Air courier for consignments under 20 kg (dubplates, short runs) |
+| `FREIGHT_PALLET_KG` | no  | `20`                                 | At or above this weight a run ships on a pallet    |
+| `IMPORT_DUTY_RATE` | no    | `0.1`                                | Uganda duty on CIF — part of every landed cost     |
+| `IMPORT_VAT_RATE` | no     | `0.18`                               | VAT on CIF + duty. Set `0` only if 7H is VAT-registered and reclaims it |
+| `CLEARANCE_USD` / `CLEARANCE_COURIER_USD` | no | `120` / `45`            | Clearing agent, documents, haulage                |
 | `MAX_UPLOAD_MB`  | no       | `250`                                | Per-file ceiling. Files travel in ~3MB slices, so this is a storage decision, not a body-size one |
 | `UPLOAD_CHUNK_BYTES` | no   | `3145728`                            | Slice size for chunked uploads (must stay under Vercel's 4.5MB body cap) |
 | `CONTACT_EMAIL`  | no       | `7hmusicgroupug@gmail.com`           | Shown in the footer, alerts and email replies      |
@@ -380,6 +387,79 @@ and who do I chase".
   revenue, and `owed` is what makes the ledger double as a debtors list.
 - **Derived, never stored.** There is no ledger table: it is built from the orders on every read, so
   it cannot drift away from what the order pages say.
+
+### The price floor: every plant's price, against ours
+
+The rate card used to be a guess. It quoted $8.50 a record at 100 units while
+Mobineko — our own main supplier — publishes **US$1,285 for 100 × 12" black LPs**
+($12.85 each, cutting, plating and printing included). Every 100-unit order was
+therefore sold below the factory invoice before freight had even been quoted, and
+the add-ons that appear as you fill in a plant's order form (colour vinyl, a
+gatefold, a printed inner, the run size itself) were nowhere in the price at all.
+
+The quote is now built from the plants' prices upwards:
+
+```
+our rate card        the dearest plant's invoice at that run size, rounded up
+plant invoice        what the chosen plant charges for this exact basket
+freight + duty       charged on the plant invoice, CIF, then VAT on CIF + duty
+clearance            agent, documents, haulage
+---------------------
+landed cost          what the records cost us to have in Kampala
++ 25% margin         the fee
+= client total
+```
+
+Because the rate card is defined as *the most expensive plant that will take the
+run*, no client can be quoted a price that loses money no matter which plant ends
+up pressing it. Choosing a cheaper plant widens the margin; it never changes the
+price the client was quoted for that basket.
+
+Where the numbers live:
+
+| File | What it is |
+| --- | --- |
+| `shared/plant-costs.js` | Per-plant price data with its provenance: `quoted` (we read it off their page), `modelled` (they quote on request only, so we hold them above the anchor), `estimate` (lathe houses). Add-ons: colour, gatefold, printed inner, 7" factor. |
+| `shared/landed-cost.js` | Packed weights, pallet vs courier freight, duty, VAT, clearance. Every rate is an env var. |
+| `shared/pricing.js` | Builds the rate card from those prices at load time, computes the landed floor, and attaches a `cost` block to every quote: plant invoice, each add-on, landed cost, margin, and `clearsFloor`. |
+
+Only one number is a plant's own published price today: **Mobineko, 100 × 12" =
+$1,285**. GZ Media, Deepgrooves, Green Lakes and Seabass quote on request (their
+calculators compute in the browser), so they are *modelled* against that anchor and
+carry a 5% safety margin — deliberately high, because guessing low is how a run gets
+sold at a loss. **When a plant answers a quote request, replace its row in
+`shared/plant-costs.js` with `confidence: 'quoted'` and the real figure; the whole
+rate card and the console move with it.**
+
+What the new prices look like (12" LP, printed jacket, printed labels, landed in
+Kampala, incl. margin):
+
+| Run | We charge | Per record | Dearest plant landed | That plant's invoice | Mobineko's invoice |
+| --- | --- | --- | --- | --- | --- |
+| 25 | $1,153 | $46.13 | $991 (Mobineko) | $650 | $650 |
+| 100 | $2,730 | $27.30 | $2,420 (Seabass) | $1,592 | $1,285 |
+| 250 | $4,719 | $18.88 | $4,156 (Seabass) | $2,881 | $2,325 |
+| 500 | $7,529 | $15.06 | $6,665 (Seabass) | $4,586 | $3,700 |
+| 1,000 | $12,272 | $12.27 | $10,878 (Seabass) | $7,372 | $5,950 |
+
+At 100 units Mobineko's invoice ($1,285) is $1,235 cheaper than our old $1,300
+total — which is exactly the loss this round removed. The last two columns show
+why the binding plant matters: our price clears the dearest one, so pressing at
+Mobineko instead leaves that much more margin.
+
+Those are higher than the old numbers because the old numbers were below cost.
+Every figure is a floor, not a target: the 25% margin sits on top of it.
+
+**Where to see it.** `/admin` → **Price floor** panel: every run size, our price,
+the dearest landed cost, the headroom, and a click-through to each plant's invoice
+and landed cost per record. The same data is at `GET /api/admin/price-floor`
+(`requireAdmin`), and `npm run test:floor` prints the table and asserts the rule
+across every plant × run size × format × sleeve (67 checks).
+
+The plant desk now also shows the modelled landed cost and expected margin while
+an order waits for the plant's real quote, instead of only "unverified" — the
+loss guard itself is unchanged: a real invoice above the client's price still
+blocks the forward with `409 loss_risk`.
 
 ### The plant desk: six intake forms, one sheet
 

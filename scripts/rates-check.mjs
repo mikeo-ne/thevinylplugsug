@@ -157,9 +157,22 @@ for (const quantity of pricing.QUANTITIES) {
     totals.deposit.ugx + totals.balance.ugx === totals.total.ugx,
     `${quantity} units: deposit + balance === total (UGX)`,
   );
+  // The fee is no longer a flat fifth of the total: it is the freight, duty, VAT
+  // and clearance on the plant's invoice plus the 25% margin, so it is at least
+  // 20% of the total and never less than the landed add-ons.
   check(
-    Math.abs(totals.managementFee.usd - totals.total.usd * 0.2) < 0.01,
-    `${quantity} units: the fee is still 25% of the USD total`,
+    totals.managementFee.usd >= quote.cost.addOnsUsd + quote.cost.marginUsd - 0.01,
+    `${quantity} units: the fee carries freight, duty and margin in full`,
+    `${totals.managementFee.usd} vs ${quote.cost.addOnsUsd} + ${quote.cost.marginUsd}`,
+  );
+  check(
+    totals.managementFee.usd >= totals.total.usd * 0.2 - 0.01,
+    `${quantity} units: the fee is never less than a fifth of the total`,
+    String(totals.managementFee.usd),
+  );
+  check(
+    totals.total.usd >= quote.cost.landedUsd,
+    `${quantity} units: the shilling total still clears the landed floor`,
   );
 }
 

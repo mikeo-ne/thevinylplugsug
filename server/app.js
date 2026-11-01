@@ -21,6 +21,7 @@ import {
   DEFAULT_PLANT_ID,
   MANAGEMENT_FEE_RATE,
   DEPOSIT_RATE,
+  priceReference,
 } from '../shared/pricing.js';
 import {
   ADMIN_PASSCODE,
@@ -781,6 +782,11 @@ api.post('/api/orders', async (req, res) => {
       fxRate: quote.fxRate,
       totals: quote.totals,
       lines: quote.lines,
+      // The floor as it stood when the order was taken: plant invoice, freight,
+      // duty, VAT, clearance and margin. Without it a later price change would
+      // silently rewrite the economics of a booked order.
+      cost: quote.cost,
+      costModel: 'plant-cost-v1',
     },
     payment: {
       method: payment.method,
@@ -1505,6 +1511,29 @@ api.get('/api/admin/payments.csv', requireAdmin, (req, res) => {
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="7h-payments-${stamp}.csv"`);
   res.send(ledgerCsv(rows));
+});
+
+/**
+ * The plants' own prices next to ours, at every run size.
+ *
+ * This is the answer to "make an order on every plant and reference their prices
+ * to ours": each row is the same basket (12" LP, jacket, printed labels) priced
+ * at every plant that will take it, with our sell price above the worst of them.
+ */
+api.get('/api/admin/price-floor', requireAdmin, (req, res) => {
+  const vinylTypeId = req.query.vinylTypeId ? String(req.query.vinylTypeId) : 'lp_standard';
+  const sleeveId = req.query.sleeveId ? String(req.query.sleeveId) : 'standard';
+  const rows = priceReference({ vinylTypeId, sleeveId });
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({
+    vinylTypeId,
+    sleeveId,
+    generatedAt: new Date().toISOString(),
+    clearsFloor: rows.every(
+      (row) => row.ourPriceUsd == null || row.lines.every((line) => line.clearsFloor),
+    ),
+    rows,
+  });
 });
 
 api.get('/api/admin/plants', requireAdmin, (_req, res) => {

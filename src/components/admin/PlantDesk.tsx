@@ -247,6 +247,18 @@ export function PlantDesk({ order, plants }: { order: Order; plants: { id: strin
             </span>
           </div>
 
+          {margin && margin.status === 'unverified' && margin.estimatedLandedUsd != null && (
+            <p className="mt-1.5 text-[10px] text-muted">
+              No plant invoice yet · our cost model lands this basket at{' '}
+              {usd(margin.estimatedLandedUsd, { cents: true })} against{' '}
+              {usd(margin.revenueUsd, { cents: true })} paid · expected margin{' '}
+              <span className={((margin.estimatedMarginUsd ?? 0) < 0) ? 'text-red-300' : 'text-lime'}>
+                {usd(margin.estimatedMarginUsd ?? 0, { cents: true })}
+              </span>
+              {margin.estimatedSource ? ` · ${margin.estimatedSource}` : ''}
+            </p>
+          )}
+
           {margin && margin.status !== 'unverified' && (
             <p className="mt-1.5 text-[10px] text-muted">
               Client paid {usd(margin.revenueUsd, { cents: true })} · landed cost{' '}

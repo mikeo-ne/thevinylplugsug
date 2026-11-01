@@ -383,6 +383,12 @@ export function Configurator() {
                   {quote.lines.setupCost > 0 && (
                     <Row label="Factory setup, plates & test press" value={usd(quote.lines.setupCost, { cents: true })} />
                   )}
+                  {(quote.lines.plantUplift ?? 0) > 0.01 && (
+                    <Row
+                      label={`${quote.plant.name} price at ${quote.quantity} units`}
+                      value={usd(quote.lines.plantUplift ?? 0, { cents: true })}
+                    />
+                  )}
                   {Math.abs(quote.lines.plantAdjustment) >= 0.01 && (
                     <Row
                       label={`${quote.plant.name} rate card`}

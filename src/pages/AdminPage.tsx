@@ -11,6 +11,7 @@ import { SystemPanel } from '../components/admin/SystemPanel';
 import { FilesPanel } from '../components/admin/FilesPanel';
 import { PlantDesk } from '../components/admin/PlantDesk';
 import { PaymentsPanel } from '../components/admin/PaymentsPanel';
+import { PriceFloorPanel } from '../components/admin/PriceFloorPanel';
 import { Logo } from '../components/ui/Logo';
 
 const channelIcon: Record<string, IconName> = {
@@ -804,6 +805,9 @@ export function AdminPage() {
             )}
           </section>
         </div>
+
+        {/* every plant's price against ours, and the floor it sets */}
+        <PriceFloorPanel />
 
         {/* every deposit, prompt and sale, in one place */}
         <PaymentsPanel />

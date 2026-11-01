@@ -7,7 +7,10 @@
  */
 import http from 'node:http';
 import fs from 'node:fs';
+
 import path from 'node:path';
+
+import { calculateQuote } from '../shared/pricing.js';
 
 const PORT = 4187;
 const BASE = `http://127.0.0.1:${PORT}`;
@@ -104,7 +107,14 @@ try {
   check(overview.status === 200 && overview.body.orders.length >= 3, 'admin overview lists orders');
 
   const tracked = overview.body.orders.find((item) => item.id === orderId);
-  check(Boolean(tracked) && tracked.quote.total === 1275, `server quote is authoritative ($${tracked?.quote.total})`);
+  check(
+    Boolean(tracked) && tracked.quote.total === calculateQuote({ quantity: 100, vinylTypeId: 'seven_single', sleeveId: 'standard' }).total,
+    `server quote is authoritative ($${tracked?.quote.total})`,
+  );
+  check(
+    Boolean(tracked) && tracked.quote.total >= tracked.quote.cost.landedUsd,
+    'the stored quote clears its landed floor',
+  );
 
   // The deposit gates the plant: a cold forward is refused, not silently sent.
   const gated = await post(
