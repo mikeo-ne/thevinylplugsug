@@ -489,9 +489,32 @@ export function pushShopStatusEvent(order, note) {
  * moment a response is sent — so the alert log is reconciled from timestamps at
  * read time. Safe to call on every request.
  */
-export function reconcileEvents(now = Date.now()) {
+/**
+ * Old failures that only ever said "the variable is not set" were never failures
+ * of delivery — nothing was attempted. They still sit in the log as red FAILED
+ * rows days later, which reads as an outage. Move them to `not set up`, but only
+ * while the channel is still missing that variable: once it is configured the row
+ * is a genuine undelivered alert and stays retryable.
+ */
+export function reclassifyUnconfiguredEvents({ now = Date.now() } = {}) {
   const db = db_.data;
   let changed = false;
+  for (const event of db.events) {
+    if (event.status !== 'failed') continue;
+    const env = alertEnvCheck().find((entry) => entry.channel === event.channel);
+    if (!env || env.missing.length === 0) continue;
+    event.status = 'unconfigured';
+    event.error = unconfiguredMessage(event.channel, env.missing);
+    event.reclassifiedAt = new Date(now).toISOString();
+    changed = true;
+  }
+  if (changed) db_.save();
+  return changed;
+}
+
+export function reconcileEvents(now = Date.now()) {
+  const db = db_.data;
+  let changed = reclassifyUnconfiguredEvents({ now });
 
   for (const event of db.events) {
     if (event.status !== 'pending' && event.status !== 'queued') continue;
@@ -736,14 +759,25 @@ export async function emitTestEvent() {
 /** Per-channel configuration state for the console. */
 export function notificationChannels() {
   const configured = channelStatus();
-  return configured.map((entry) => ({
-    channel: entry.channel,
-    ...getChannelMeta(entry.channel),
-    live: entry.live,
-    mode: entry.live ? 'live' : 'simulated',
-    detail: entry.detail,
-    ...(entry.channel === 'plant' ? { autoDeliver: automationConfig().autoForward } : {}),
-  }));
+  const verification = channelVerification();
+  return configured.map((entry) => {
+    const proof = verification.find((item) => item.channel === entry.channel);
+    return {
+      channel: entry.channel,
+      ...getChannelMeta(entry.channel),
+      live: entry.live,
+      mode: entry.live ? 'live' : 'simulated',
+      detail: entry.detail,
+      // The alert log header and the System panel must tell the same story, so
+      // both read from the same verification.
+      ready: proof?.ready ?? entry.live,
+      verified: proof?.verified ?? false,
+      status: proof?.status ?? 'untested',
+      proofAt: proof?.proofAt ?? null,
+      lastError: proof?.lastError ?? null,
+      ...(entry.channel === 'plant' ? { autoDeliver: automationConfig().autoForward } : {}),
+    };
+  });
 }
 
 export const notificationsConfigured = () => channelStatus().some((entry) => entry.live);
@@ -851,7 +885,18 @@ export async function retryFailedAlerts({
 /** Counts behind the console's alert panel. */
 export function alertOutboxSummary() {
   const db = db_.data;
-  const counts = { delivered: 0, failed: 0, queued: 0, sending: 0, pending: 0, simulated: 0, blocked: 0, total: db.events.length };
+  const counts = {
+    delivered: 0,
+    failed: 0,
+    // "Never attempted, no credentials" is its own state, not a queue backlog.
+    unconfigured: 0,
+    queued: 0,
+    sending: 0,
+    pending: 0,
+    simulated: 0,
+    blocked: 0,
+    total: db.events.length,
+  };
   for (const event of db.events) {
     if (event.status === 'simulated') counts.simulated += 1;
     else if (event.status in counts) counts[event.status] += 1;

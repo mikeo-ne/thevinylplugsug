@@ -472,6 +472,12 @@ export function SystemPanel() {
                   <span className="text-red-300">{outbox.counts.failed} failed</span>
                 </>
               ) : null}
+              {outbox?.counts.unconfigured ? (
+                <>
+                  {' · '}
+                  <span className="text-amber-200/80">{outbox.counts.unconfigured} not set up</span>
+                </>
+              ) : null}
             </span>
             <button
               type="button"

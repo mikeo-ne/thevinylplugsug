@@ -299,19 +299,10 @@ export interface AdminOverview {
     paymentMethods: PaymentMethod[];
   };
   plants: Plant[];
-  channels: {
-    channel: string;
-    label: string;
-    icon: string;
-    delay: number;
-    autoDeliver: boolean;
-    live?: boolean;
-    mode?: 'live' | 'simulated';
-    detail?: string;
-  }[];
+  channels: AlertChannelSummary[];
   notifications?: {
     configured: boolean;
-    channels: { channel: string; live: boolean; detail: string }[];
+    channels: AlertChannelSummary[];
   };
   automation?: {
     autoForward: boolean;
@@ -542,6 +533,26 @@ export interface AlertChannelVerification {
   rotated: boolean;
   missing: string[];
   detail: string;
+}
+
+/**
+ * One row of the alert rail as the console shows it: configured (`ready`) and
+ * proven (`verified`) are different claims, and `status` is the four-state badge.
+ */
+export interface AlertChannelSummary {
+  channel: string;
+  label: string;
+  icon: string;
+  delay?: number;
+  autoDeliver: boolean;
+  live?: boolean;
+  mode?: 'live' | 'simulated';
+  detail?: string;
+  ready?: boolean;
+  verified?: boolean;
+  status?: 'proven' | 'untested' | 'degraded' | 'unconfigured';
+  proofAt?: string | null;
+  lastError?: string | null;
 }
 
 export interface SystemHealth {
