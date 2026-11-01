@@ -7,6 +7,8 @@ import type {
   RatesSnapshot,
   CompanyConfig,
   Order,
+  PlantMargin,
+  PlantSheet,
   ShopConfig,
   ShopOrder,
   SystemHealth,
@@ -162,6 +164,27 @@ export const api = {
     }),
 
   adminOverview: () => request<AdminOverview>('/api/admin/overview'),
+
+  plantSheet: (id: string, plant: string) =>
+    request<{ sheet: PlantSheet; margin: PlantMargin }>(
+      `/api/admin/orders/${encodeURIComponent(id)}/plant-sheet?plant=${encodeURIComponent(plant)}`,
+    ),
+
+  recordPlantQuote: (
+    id: string,
+    body: {
+      plantId: string;
+      costUsd: number;
+      freightUsd?: number;
+      dutiesUsd?: number;
+      note?: string;
+      acknowledgeLoss?: boolean;
+    },
+  ) =>
+    request<{ order: Order; margin: PlantMargin }>(`/api/admin/orders/${encodeURIComponent(id)}/plant-quote`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
 
   adminUpdateOrder: (id: string, body: { status?: string; paymentStatus?: string }) =>
     request<{ order: Order }>(`/api/admin/orders/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),

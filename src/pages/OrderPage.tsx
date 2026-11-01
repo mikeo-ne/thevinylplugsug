@@ -137,6 +137,7 @@ export function OrderPage() {
         plantPreference,
         audioLink: files.audioLink,
         artworkLink: files.artworkLink,
+        tracklist: files.tracklist,
         uploads: {
           audio: files.audio.map((file) => file.id),
           artwork: files.artwork.map((file) => file.id),
@@ -484,6 +485,23 @@ export function OrderPage() {
                     error={errors.artwork}
                     maxMb={config.limits?.maxUploadMb ?? 250}
                   />
+
+                  <label className="block">
+                    <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
+                      Tracklist &amp; side split <span className="font-normal normal-case tracking-normal">(optional, but the plant asks for it)</span>
+                    </span>
+                    <textarea
+                      className="field mt-1.5 min-h-[92px] text-[12.5px]"
+                      value={files.tracklist}
+                      maxLength={2000}
+                      onChange={(event) => setFiles({ tracklist: event.target.value })}
+                      placeholder={'A1  Naledi — Riverbed   3:52\nA2  Naledi — Kampala Nights   4:10\nB1  Naledi — Okello   3:31'}
+                    />
+                    <span className="mt-1 block text-[10.5px] text-muted">
+                      GZ Media check their side splits against these timings, and lathe cuts are made in
+                      file order. One line per track: side, title, duration.
+                    </span>
+                  </label>
 
                   {(files.audio.length > 0 || files.artwork.length > 0) && (
                     <div className="rounded-xl border border-white/[0.08] bg-black/20 p-4">

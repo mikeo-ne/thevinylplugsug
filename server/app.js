@@ -79,6 +79,11 @@ import {
   walletFeeUgx,
 } from './momo.js';
 import {
+  PLANT_PROFILES,
+  buildPlantSheet,
+  marginCheck,
+} from '../shared/plants.js';
+import {
   ensureInvoice,
   invoiceAmounts,
   invoiceStatus,
@@ -692,6 +697,9 @@ api.post('/api/orders', async (req, res) => {
   const deliveryPostalCode = text(client.deliveryPostalCode, 32);
   const country = text(client.country, 80) || (deliveryType === 'uganda' ? 'Uganda' : '');
   const notes = text(client.notes, 1200);
+  // Plants want the running order and the timings — GZ checks side splits against
+  // them, and a lathe cuts in the order the files arrive.
+  const tracklist = text(body.tracklist, 2000);
 
   if (name.length < 2) errors.name = 'Enter the artist or label name.';
   if (!EMAIL_RE.test(email)) errors.email = 'Enter a valid contact email.';
@@ -787,6 +795,7 @@ api.post('/api/orders', async (req, res) => {
       audioLink: audioLink && audioLink !== 'invalid' ? audioLink : null,
       artworkLink: artworkLink && artworkLink !== 'invalid' ? artworkLink : null,
     },
+    tracklist,
     termsAcceptedAt: new Date().toISOString(),
     statusHistory: [{ status: 'received', at: new Date().toISOString(), by: 'client', note: 'Order submitted' }],
     clientUserAgent: text(req.headers['user-agent'], 200),
@@ -1170,6 +1179,7 @@ api.get('/api/orders/:id', (req, res) => {
         artworkLink: order.files.artworkLink,
       },
       plantPreference: order.plantPreference,
+      tracklist: order.tracklist ?? '',
       statusHistory: order.statusHistory ?? [],
       invoice: {
         number: invoice.number,
@@ -1302,6 +1312,9 @@ function decorateOrder(order) {
       managementFeeUsd: order.quote.managementFee ?? null,
       rate: order.quote.managementFeeRate ?? null,
     },
+    // What the plant will actually charge, and whether that still leaves a margin.
+    plantMargin: marginCheck(order),
+    plantQuote: order.plantQuote ?? null,
     invoice: order.invoice
       ? {
           number: order.invoice.number,
@@ -1324,6 +1337,9 @@ api.get('/api/admin/overview', requireAdmin, (_req, res) => {
   res.json({
     summary: {
       orders: orders.length,
+      // Orders whose recorded plant cost is above what the client paid.
+      lossRisk: orders.filter((order) => marginCheck(order).lossRisk && !order.plantQuote?.acknowledgedLoss).length,
+      marginUnverified: orders.filter((order) => marginCheck(order).status === 'unverified').length,
       pipelineValueUsd: Number(pipeline.reduce((sum, order) => sum + order.quote.total, 0).toFixed(2)),
       collectedUsd: Number(
         orders
@@ -1394,7 +1410,13 @@ api.patch('/api/admin/orders/:id', requireAdmin, async (req, res) => {
   const order = db.orders.find((item) => item.id === req.params.id);
   if (!order) return res.status(404).json({ error: 'Order not found.' });
 
-  const { status, paymentStatus } = req.body ?? {};
+  const { status, paymentStatus, tracklist } = req.body ?? {};
+  if (typeof tracklist === 'string') {
+    // The desk often gets the running order over WhatsApp, after the client
+    // submitted. Same field, same limit, one place it lives.
+    order.tracklist = text(tracklist, 2000);
+    db_.save();
+  }
   if (status && !ORDER_STATUSES.has(status)) return res.status(400).json({ error: 'Unknown status.' });
   if (paymentStatus && !['awaiting_deposit', 'processing', 'deposit_paid', 'paid'].includes(paymentStatus)) {
     return res.status(400).json({ error: 'Unknown payment status.' });
@@ -1451,6 +1473,99 @@ api.patch('/api/admin/orders/:id', requireAdmin, async (req, res) => {
   });
 });
 
+/**
+ * The six plants, as the console needs them: what each one asks for, what it will
+ * not accept, and where the numbers came from.
+ */
+api.get('/api/admin/plants', requireAdmin, (_req, res) => {
+  res.json({
+    plants: PRESSING_PLANTS.map((plant) => {
+      const profile = PLANT_PROFILES[plant.id] ?? null;
+      return {
+        id: plant.id,
+        name: plant.name,
+        country: plant.country,
+        region: plant.region,
+        kind: plant.kind,
+        moq: plant.moq,
+        leadTime: plant.leadTime,
+        ordersEmail: plant.ordersEmail ?? null,
+        repEmail: plant.repEmail ?? null,
+        profile: profile
+          ? {
+              channel: profile.channel,
+              portal: profile.portal,
+              quoteMode: profile.quoteMode,
+              fileDelivery: profile.fileDelivery,
+              minimum: profile.minimum,
+              minimumNote: profile.minimumNote,
+              fieldCount: profile.fields.length,
+              fields: profile.fields.map((entry) => entry.label),
+              warnings: profile.warnings ?? [],
+              sources: profile.sources,
+            }
+          : null,
+      };
+    }),
+  });
+});
+
+/** The filled order sheet for one order and one plant. */
+api.get('/api/admin/orders/:id/plant-sheet', requireAdmin, (req, res) => {
+  const order = db_.data.orders.find((item) => item.id === req.params.id);
+  if (!order) return res.status(404).json({ error: 'Order not found.' });
+  const plantId = PRESSING_PLANTS.some((plant) => plant.id === req.query.plant)
+    ? String(req.query.plant)
+    : order.plantPreference ?? 'mobineko';
+  const plant = PRESSING_PLANTS.find((entry) => entry.id === plantId);
+  const sheet = buildPlantSheet(order, plantId, {
+    tin: COMPANY.tin,
+    email: plant?.ordersEmail ?? plant?.repEmail ?? null,
+  });
+  if (!sheet) return res.status(404).json({ error: 'No intake profile for that plant.' });
+  res.json({ sheet, margin: marginCheck(order) });
+});
+
+/**
+ * Record what the plant actually quoted — and be honest when it is above what the
+ * client paid.
+ *
+ * The quote the client accepted is fixed. The plant's invoice is not. This is the
+ * point where those two numbers meet, so the console can see a loss before the
+ * order is placed rather than when the invoice arrives.
+ */
+api.post('/api/admin/orders/:id/plant-quote', requireAdmin, (req, res) => {
+  const db = db_.data;
+  const order = db.orders.find((item) => item.id === req.params.id);
+  if (!order) return res.status(404).json({ error: 'Order not found.' });
+
+  const number = (value) => (Number.isFinite(Number(value)) ? Math.round(Number(value) * 100) / 100 : null);
+  const cost = number(req.body?.costUsd);
+  if (cost === null || cost < 0) {
+    return res.status(400).json({ error: 'Record the plant cost in USD.' });
+  }
+  const plantId = PRESSING_PLANTS.some((plant) => plant.id === req.body?.plantId)
+    ? req.body.plantId
+    : order.plantPreference ?? 'mobineko';
+
+  order.plantQuote = {
+    plantId,
+    costUsd: cost,
+    freightUsd: number(req.body?.freightUsd) ?? 0,
+    dutiesUsd: number(req.body?.dutiesUsd) ?? 0,
+    note: text(req.body?.note, 400),
+    source: text(req.body?.source, 200) || 'desk entry',
+    quotedAt: new Date().toISOString(),
+    // Acknowledging a loss is a deliberate act with a name against it.
+    acknowledgedLoss: Boolean(req.body?.acknowledgeLoss),
+    acknowledgedAt: req.body?.acknowledgeLoss ? new Date().toISOString() : null,
+  };
+  db_.save();
+
+  const margin = marginCheck(order);
+  res.json({ order: decorateOrder(order), margin });
+});
+
 api.post('/api/admin/orders/:id/forward', requireAdmin, async (req, res) => {
   const db = db_.data;
   const order = db.orders.find((item) => item.id === req.params.id);
@@ -1458,6 +1573,14 @@ api.post('/api/admin/orders/:id/forward', requireAdmin, async (req, res) => {
   const plantId = PRESSING_PLANTS.some((plant) => plant.id === req.body?.plantId)
     ? req.body.plantId
     : order.plantPreference ?? 'mobineko';
+  // A known loss stops here. The deposit gate protects the client's money; this
+  // protects yours — placing an order whose plant invoice is above what the
+  // client paid is a decision, not an accident, so it takes an acknowledgement.
+  const margin = marginCheck(order);
+  if (margin.lossRisk && !margin.acknowledged) {
+    return res.status(409).json({ error: margin.detail, code: 'loss_risk', margin });
+  }
+
   // forwardOrderToPlant enforces the gate and records the hold on the console,
   // so the refusal is both visible and impossible to bypass.
   const { order: updated, plant, blocked } = await forwardOrderToPlant(order, plantId);
@@ -1642,6 +1765,18 @@ api.post('/api/admin/orders/:id/deposit/confirm', requireAdmin, async (req, res)
   order.status = order.status === 'received' ? 'confirmed' : order.status;
   intent.confirmedDeposit = true;
   db_.save();
+
+  // The deposit is in and confirmed, but a recorded plant quote above the client's
+  // price must not be released automatically — say why instead of quietly ordering.
+  const guard = marginCheck(order);
+  if (guard.lossRisk && !guard.acknowledged) {
+    res.json({
+      order: decorateOrder(db.orders.find((item) => item.id === order.id) ?? order),
+      intent: intentView(intent),
+      release: { skipped: true, reason: 'loss_risk', margin: guard },
+    });
+    return;
+  }
 
   const release = await autoForwardOrder(order, { trigger: 'deposit' });
   res.json({

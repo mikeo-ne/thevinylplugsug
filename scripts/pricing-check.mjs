@@ -93,10 +93,10 @@ check(
 const expectedPlants = [
   ['mobineko', 25],
   ['greenlakes', 100],
-  ['seabass', 50],
+  ['seabass', 100],
   ['drdub', 1],
-  ['gzmedia', 250],
-  ['deepgrooves', 100],
+  ['gzmedia', 300],
+  ['deepgrooves', 200],
 ];
 check(PRESSING_PLANTS.length === 6, 'six plants are on the panel', String(PRESSING_PLANTS.length));
 for (const [id, moq] of expectedPlants) {
@@ -119,10 +119,12 @@ check(
 );
 
 /* 5 ── choosing a plant changes the money -------------------------------- */
-const atGz = calculateQuote({ quantity: 250, vinylTypeId: 'lp_colored', sleeveId: 'gatefold', plantId: 'gzmedia' });
-const atMobineko = calculateQuote({ quantity: 250, vinylTypeId: 'lp_colored', sleeveId: 'gatefold', plantId: 'mobineko' });
+// 500, not 250: GZ's published minimum is 300, so a 250-unit run is no longer a
+// legal request to them (see shared/plants.js).
+const atGz = calculateQuote({ quantity: 500, vinylTypeId: 'lp_colored', sleeveId: 'gatefold', plantId: 'gzmedia' });
+const atMobineko = calculateQuote({ quantity: 500, vinylTypeId: 'lp_colored', sleeveId: 'gatefold', plantId: 'mobineko' });
 check(atGz.plant.id === 'gzmedia', 'an eligible plant choice is honoured', atGz.plant.name);
-check(atGz.total < atMobineko.total, 'GZ Media quotes cheaper at 250 than the base rate', `${atGz.total} vs ${atMobineko.total}`);
+check(atGz.total < atMobineko.total, 'GZ Media quotes cheaper at 500 than the base rate', `${atGz.total} vs ${atMobineko.total}`);
 check(atGz.lines.plantAdjustment < 0, 'the negative rate-card adjustment is itemised', String(atGz.lines.plantAdjustment));
 check(
   atGz.lines.sleeveCost === atMobineko.lines.sleeveCost,
@@ -135,7 +137,7 @@ check(
   `${atGz.factoryCost}`,
 );
 
-const atSeabass = calculateQuote({ quantity: 50, vinylTypeId: 'lp_standard', sleeveId: 'standard', plantId: 'seabass' });
+const atSeabass = calculateQuote({ quantity: 100, vinylTypeId: 'lp_standard', sleeveId: 'standard', plantId: 'seabass' });
 check(atSeabass.plant.id === 'seabass' && atSeabass.lines.plantAdjustment > 0, 'premium boutiques carry a positive adjustment');
 
 const tooSmallForGz = calculateQuote({ quantity: 100, vinylTypeId: 'lp_standard', sleeveId: 'standard', plantId: 'gzmedia' });

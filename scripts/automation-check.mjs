@@ -311,7 +311,8 @@ try {
         recipientName: 'Recipient Name',
         country: 'Uganda',
       },
-      configuration: { quantity: 50, vinylTypeId: 'lp_standard', sleeveId: 'standard' },
+      // 100, not 50: Seabass' published minimum is 100 (see shared/plants.js).
+      configuration: { quantity: 100, vinylTypeId: 'lp_standard', sleeveId: 'standard' },
       payment: { method: 'mtn_momo' },
       audioLink: 'https://example.test/master.wav',
       artworkLink: 'https://example.test/cover.pdf',
@@ -319,7 +320,7 @@ try {
       plantPreference: 'seabass',
     }),
   });
-  check(shared.res.status === 201, '50-unit Seabass order created', `status ${shared.res.status}`);
+  check(shared.res.status === 201, '100-unit Seabass order created', `status ${shared.res.status}`);
   check(shared.body.order?.plantPreference === 'seabass', 'order keeps the Seabass plant');
   const sharedPlant = (await json('/api/admin/overview', auth)).body.plants?.find((plant) => plant.id === 'seabass');
   check(sharedPlant?.ordersEmail === 'orders@seabassvinyl.test', 'Seabass inbox is the real rep address', String(sharedPlant?.ordersEmail));

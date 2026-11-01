@@ -169,7 +169,9 @@ export const PRESSING_PLANTS = [
     country: 'United Kingdom',
     region: 'UK · independent boutique pressing',
     kind: 'pressing',
-    moq: 50,
+    // Was 50. Their FAQ (checked 2026-11-01) states a minimum order size of 100
+    // units, so a 50-unit quote was promising something the plant will refuse.
+    moq: 100,
     maxQuantity: null,
     priceFactor: 1.12,
     leadTime: '8–12 weeks',
@@ -201,7 +203,8 @@ export const PRESSING_PLANTS = [
     country: 'Czech Republic',
     region: 'Czech Republic · industrial high-volume leader',
     kind: 'pressing',
-    moq: 250,
+    // Was 250. GZ's own FAQ (checked 2026-11-01): minimum 300 pcs for vinyl.
+    moq: 300,
     maxQuantity: null,
     priceFactor: 0.94,
     leadTime: '8–10 weeks',
@@ -217,7 +220,8 @@ export const PRESSING_PLANTS = [
     country: 'Netherlands',
     region: 'Netherlands · 100% green energy audiophile',
     kind: 'pressing',
-    moq: 100,
+    // Was 100. Deepgrooves state a minimum order of 200 records (checked 2026-11-01).
+    moq: 200,
     maxQuantity: null,
     priceFactor: 1.08,
     leadTime: '9–12 weeks',

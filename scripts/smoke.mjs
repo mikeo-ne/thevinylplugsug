@@ -153,8 +153,8 @@ for (const route of routes) {
         }
       }
       const moqs = plantOptions.map((option) => (option.textContent ?? '').match(/MOQ (\d+)/)?.[1]).join(',');
-      if (moqs !== '25,100,50,1,250,100') {
-        failures.push(`${route}: plant MOQs are ${moqs}, expected 25,100,50,1,250,100`);
+      if (moqs !== '25,100,100,1,300,200') {
+        failures.push(`${route}: plant MOQs are ${moqs}, expected 25,100,100,1,300,200`);
       }
       // A fixed pixel width larger than a small phone makes the whole page scroll
       // sideways — the exact bug that cut the hero off on mobile.
