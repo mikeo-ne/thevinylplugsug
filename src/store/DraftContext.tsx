@@ -13,7 +13,7 @@ import { useRates } from './RatesContext';
 
 const STORAGE_KEY = '7h-draft-v1';
 
-const emptyFiles: DraftFiles = { audio: [], artwork: [], audioLink: '', artworkLink: '' };
+const emptyFiles: DraftFiles = { audio: [], artwork: [], audioLink: '', artworkLink: '', tracklist: '' };
 
 const emptyClient: ClientDetails = {
   name: '',
@@ -79,7 +79,13 @@ function readDraft(): DraftState {
     return {
       configuration: { ...initialState.configuration, ...parsed.configuration },
       client: { ...emptyClient, ...parsed.client },
-      files: { ...emptyFiles, ...parsed.files, audioLink: parsed.files?.audioLink ?? '', artworkLink: parsed.files?.artworkLink ?? '' },
+      files: {
+        ...emptyFiles,
+        ...parsed.files,
+        audioLink: parsed.files?.audioLink ?? '',
+        artworkLink: parsed.files?.artworkLink ?? '',
+        tracklist: parsed.files?.tracklist ?? '',
+      },
       payment: { ...emptyPayment, ...parsed.payment },
       termsAccepted: Boolean(parsed.termsAccepted),
       plantPreference: parsed.plantPreference ?? defaultPlantId,

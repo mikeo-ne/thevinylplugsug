@@ -29,6 +29,13 @@ const CONTACT_WHATSAPP_NUMBER = process.env.CONTACT_WHATSAPP ?? '256768261003';
 export const COMPANY = {
   name: '7H Music Group',
   tagline: 'Vinyl Production & Brokerage',
+  /**
+   * Uganda Revenue Authority TIN. It goes on the invoice because the plants ask
+   * for a tax number on their own intake forms, and because a client claiming the
+   * spend wants it on the document. Overridable for a staging deployment.
+   */
+  tin: process.env.COMPANY_TIN ?? '1042994723',
+  address: process.env.COMPANY_ADDRESS ?? 'Kampala, Uganda',
   email: process.env.CONTACT_EMAIL ?? '7hmusicgroupug@gmail.com',
   phone: CONTACT_PHONE,
   whatsapp: `https://wa.me/${CONTACT_WHATSAPP_NUMBER}`,

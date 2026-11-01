@@ -9,6 +9,7 @@ import { StatusPill } from '../components/ui/StatusPill';
 import { ShopPanel } from '../components/admin/ShopPanel';
 import { SystemPanel } from '../components/admin/SystemPanel';
 import { FilesPanel } from '../components/admin/FilesPanel';
+import { PlantDesk } from '../components/admin/PlantDesk';
 import { Logo } from '../components/ui/Logo';
 
 const channelIcon: Record<string, IconName> = {
@@ -341,6 +342,12 @@ export function AdminPage() {
           <Stat label="Deposits in" value={overview ? usd(overview.summary.collectedUsd, { cents: false }) : '—'} />
           <Stat label="Needs action" value={overview ? String(overview.summary.awaitingAction) : '—'} hint="unreleased" />
           <Stat label="Open alerts" value={overview ? String(overview.summary.undeliveredEvents) : '—'} hint="webhooks" />
+          {/* Money you would lose if these went to the plant as priced. */}
+          <Stat
+            label="Margin risk"
+            value={overview ? String(overview.summary.lossRisk ?? 0) : '—'}
+            hint={overview?.summary.marginUnverified ? `${overview.summary.marginUnverified} unverified` : 'all checked'}
+          />
         </div>
 
         <div className="mt-6 grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
@@ -769,6 +776,12 @@ export function AdminPage() {
                       )}
                     </p>
                   )}
+
+                  <PlantDesk
+                    order={selected}
+                    plants={overview?.plants ?? []}
+                    key={selected.id}
+                  />
 
                   <div className="mt-4">
                     <button

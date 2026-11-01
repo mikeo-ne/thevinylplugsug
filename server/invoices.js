@@ -322,6 +322,7 @@ export function renderInvoiceHtml(order, invoice = order.invoice) {
       <div>
         <div class="brand">7H <span>Music Group</span></div>
         <div class="tagline">Vinyl production &amp; brokerage · Kampala</div>
+        <div class="tagline" style="margin-top:6px;letter-spacing:.08em">TIN ${esc(COMPANY.tin ?? '—')}</div>
       </div>
       <div class="head-right">
         <div class="doc">Invoice</div>
@@ -451,6 +452,17 @@ export function renderInvoiceHtml(order, invoice = order.invoice) {
       </table>
     </section>
 
+    ${
+      order.tracklist
+        ? `<section>
+      <h2>Tracklist</h2>
+      <pre class="mono" style="margin:0;white-space:pre-wrap;font-size:12px;line-height:1.65">${esc(
+        order.tracklist,
+      )}</pre>
+    </section>`
+        : ''
+    }
+
     <section>
       <h2>Files on this order</h2>
       <table>
@@ -462,7 +474,7 @@ export function renderInvoiceHtml(order, invoice = order.invoice) {
     </section>
 
     <footer>
-      <p><strong>7H Music Group</strong> · ${esc(COMPANY.location ?? 'Kampala, Uganda')} · ${esc(
+      <p><strong>7H Music Group</strong> · TIN ${esc(COMPANY.tin ?? '—')} · ${esc(COMPANY.location ?? 'Kampala, Uganda')} · ${esc(
         COMPANY.email ?? '7hmusicgroupug@gmail.com',
       )} · ${esc(COMPANY.phone ?? '+256 768 261 003')}</p>
       <p>All-in price: production, freight to Kampala and handling are included. Balance is due on dispatch;

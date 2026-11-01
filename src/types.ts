@@ -229,6 +229,14 @@ export interface DraftFiles {
   artwork: UploadedFile[];
   audioLink: string;
   artworkLink: string;
+  /**
+   * Titles, sides and durations, one per line.
+   *
+   * Not decoration: GZ Media's studio checks the side splits against the timings,
+   * and Dr. Dub cuts in the order the files arrive. Without it the plant order
+   * sheet cannot be completed, which is exactly what the sheet tells you.
+   */
+  tracklist: string;
 }
 
 export interface Order {
@@ -267,6 +275,21 @@ export interface Order {
   /** The numbered document this order was issued (see server/invoices.js). */
   invoice?: InvoiceSummary | null;
   plantPreference?: string;
+  /** Titles, sides and durations as the client or the desk wrote them. */
+  tracklist?: string;
+  /** What the plant actually quoted, once the desk records it. */
+  plantQuote?: {
+    plantId: string;
+    costUsd: number;
+    freightUsd: number;
+    dutiesUsd: number;
+    note: string;
+    source: string;
+    quotedAt: string;
+    acknowledgedLoss: boolean;
+    acknowledgedAt: string | null;
+  } | null;
+  plantMargin?: PlantMargin;
   plantHandoff?: {
     plant: string;
     at: string;
@@ -342,6 +365,69 @@ export interface InvoiceSummary {
   };
 }
 
+/**
+ * One field of a plant's intake form, filled from the order where the portal has
+ * the answer and flagged where it does not.
+ */
+export interface PlantSheetField {
+  key: string;
+  label: string;
+  value: string | null;
+  status: 'ready' | 'assumed' | 'missing';
+  blocker: boolean;
+  note: string | null;
+}
+
+export interface PlantSheet {
+  plant: {
+    id: string;
+    name: string;
+    channel: string;
+    portal: string;
+    email: string | null;
+    quoteMode: string;
+    fileDelivery: string;
+    minimum: number;
+    minimumNote: string;
+    sources: { label: string; url: string; checked: string }[];
+  };
+  order: {
+    reference: string | null;
+    catalogNumber: string | null;
+    artist: string | null;
+    deliveredTo: string | null;
+    quantity: number;
+    format: string;
+    turnaround: string | null;
+  };
+  fields: PlantSheetField[];
+  files: { role: string; name: string; bytes: number | null; sha256: string | null; download: string | null }[];
+  warnings: string[];
+  missing: string[];
+  blockers: string[];
+  ready: boolean;
+  text: string;
+}
+
+/**
+ * The money check that happens when the plant's real price meets the client's
+ * fixed one. `unverified` means nobody has recorded a plant quote yet — which is
+ * not the same as "profitable".
+ */
+export interface PlantMargin {
+  status: 'unverified' | 'safe' | 'loss';
+  revenueUsd: number;
+  costUsd: number | null;
+  freightUsd: number | null;
+  dutiesUsd: number | null;
+  landedCostUsd: number | null;
+  marginUsd: number | null;
+  marginPct: number | null;
+  lossRisk: boolean;
+  acknowledged?: boolean;
+  detail: string;
+}
+
 export interface WebhookEvent {
   id: string;
   orderId: string;
@@ -363,6 +449,10 @@ export interface AdminOverview {
   summary: {
     orders: number;
     pipelineValueUsd: number;
+    /** Orders whose recorded plant cost is above what the client paid. */
+    lossRisk?: number;
+    /** Orders with no plant quote recorded — the margin is unknown, not fine. */
+    marginUnverified?: number;
     collectedUsd: number;
     awaitingAction: number;
     forwarded: number;

@@ -46,6 +46,8 @@ Once `main` is up to date, any Vercel project connected to this repository deplo
 | `CONTACT_EMAIL`  | no       | `7hmusicgroupug@gmail.com`           | Shown in the footer, alerts and email replies      |
 | `CONTACT_PHONE`  | no       | `+256 768 261 003`                   | Displayed phone number                             |
 | `CONTACT_WHATSAPP` | no     | `256768261003`                       | Digits only — powers every `wa.me` link            |
+| `COMPANY_TIN`    | no       | `1042994723`                         | URA tax number printed on invoices and filled into each plant's VAT field |
+| `COMPANY_ADDRESS`| no       | `Kampala, Uganda`                    | Invoice letterhead address                         |
 | `MOMO_NUMBER`    | no       | `0768 261 003`                       | MTN merchant number shown at checkout              |
 | `MOMO_SUBSCRIPTION_KEY` / `MOMO_API_USER` / `MOMO_API_KEY` | no | from momodeveloper.mtn.com | Enables real **MTN MoMo collection prompts** for the deposit. Unset = dial-the-merchant only |
 | `MOMO_TARGET_ENV` | no      | `mtnuganda` / `sandbox`              | MTN target environment (must match the keys)        |
@@ -359,6 +361,46 @@ record just sold out.
 The console's **System** panel says which driver is live, whether it survives a deploy, and how many
 rows it holds — and `GET /api/health` reports the same thing publicly (no secrets) for uptime checks.
 
+### The plant desk: six intake forms, one sheet
+
+Points 5 and 6 of the 1 November brief, answered together because they are the same
+conversation: *"all plants have different order workflows — how will orders from our site
+match what they need?"* and *"make sure my pricing doesn't end up below the plant's."*
+
+**Every plant's intake is documented** (`shared/plants.js`), with a dated source, because a
+stale minimum is how a quote becomes a loss:
+
+| Plant | Intake | Their minimum | What they insist on |
+| --- | --- | --- | --- |
+| Mobineko | Online configurator | 25 | Catalogue number, delivery address, VAT number; duties are DDU (not in their price) |
+| Green Lakes | Web form | 100 | Weight, colour, cover type, inner sleeves, delivery speed; **mechanical licence before pressing** |
+| Seabass | Configurator or email | 100 | Mastered audio *and* finalised artwork before the 8-week clock; splits need a shared stamper |
+| GZ Media | FTP + your GZ contact | 300 | Folder named by catalogue number, master in an archive, **tracklist with timings**, a control code per file |
+| Deepgrooves | Online calculator | 200 | Composed calculator order, invoice + address details, mastered WAV |
+| Dr. Dub | Shop checkout | 1 | Size, rpm, sides, file order (cuts run in upload order) |
+
+**Three minimums were wrong and are now corrected** — Seabass 50 → 100, GZ 250 → 300,
+Deepgrooves 100 → 200. A run a plant will refuse can no longer be quoted, and the configurator
+stops offering that plant below its floor.
+
+**The sheet.** `GET /api/admin/orders/:id/plant-sheet?plant=<id>` renders that plant's own form,
+filled from the order: spec, files with SHA-256 checksums and download links, delivery address,
+catalogue number (the order reference). Fields the portal cannot supply are marked *missing*, and
+the ones the plant treats as blockers are listed under **collect before ordering** — GZ's tracklist,
+Green Lakes' licence, Dr. Dub's running order. A **Copy sheet** button puts the whole thing on the
+clipboard, ready to paste into whichever form you are staring at.
+
+**The tracklist** is now part of the order (`tracklist`, one line per track: side, title, duration),
+entered by the client on the files step or added by the desk afterwards via `PATCH
+/api/admin/orders/:id`. It prints on the invoice and satisfies GZ's timing requirement.
+
+**The money guard.** When the plant's real quote arrives, record it in the console (cost, freight,
+duties): `POST /api/admin/orders/:id/plant-quote`. `marginCheck()` prices the order against what
+the client actually paid and the console shows *safe* or *loss* with the shortfall. A loss-making
+order is **refused at the forward step** (`409 loss_risk`) until someone ticks "I know this loses
+money" — and even then the deposit gate still applies underneath. Until a quote is recorded the
+order reports `unverified`, which is not the same as profitable.
+
 ### The invoice, and the WhatsApp hand-off
 
 Every order now gets a numbered invoice the moment it exists — `7H-INV-0001`, never renumbered, so
@@ -453,6 +495,7 @@ npm run test:db           # Postgres (PGlite) + Redis drivers, schema, atomic st
 npm run test:alerts       # every alert channel against a local sink, incl. retries
 npm run test:payments     # wallet rails + chunked uploads, against a local sink
 npm run test:invoice      # numbering, all-in page, WhatsApp hand-off, no margin leak
+npm run test:plants       # per-plant sheets, published minimums, loss guard, TIN
 node scripts/smoke.mjs    # needs the app running on :4173
 node scripts/flow.mjs
 ```
@@ -474,7 +517,10 @@ npx vercel --prod
 - [ ] `/order` completes and lands on `/order/7H-XXXX` with deposit instructions.
 - [ ] The success page shows `Invoice 7H-INV-0001`; opening it prints cleanly, and the **Send on
       WhatsApp** button opens a chat with the reference and total already written.
-- [ ] That invoice contains no percentage fee and no factory-cost line.
+- [ ] That invoice contains no percentage fee and no factory-cost line, and shows TIN 1042994723.
+- [ ] In the console, pick a plant in **Plant desk**: the sheet fills itself in, and anything that
+      plant will block on is named.
+- [ ] Recording a plant cost above the client's price turns the order red and refuses the forward.
 - [ ] `/admin` accepts your new `ADMIN_PASSCODE`, shows the order, and the webhook log resolves.
 - [ ] "Forward" produces the plant payload and flips the order to **Sent to plant**.
 - [ ] Custom domain added (Vercel → Domains) and `ADMIN_PASSCODE` rotated away from the demo value.
