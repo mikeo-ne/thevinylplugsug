@@ -659,34 +659,62 @@ export function AdminPage() {
               <span className="rounded-full border border-white/10 px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-muted">
                 {overview?.events.length ?? 0} events
               </span>
-              <span
-                className={`rounded-full border px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider ${
-                  overview?.notifications?.configured
+              {(() => {
+                // "live delivery" used to mean only "some variable is set". Say how
+                // many rails have actually been proven instead.
+                const rails = overview?.channels ?? [];
+                const proven = rails.filter((channel) => channel.verified).length;
+                const ready = rails.filter((channel) => channel.ready ?? channel.live).length;
+                const tone =
+                  proven > 0
                     ? 'border-lime/30 bg-lime/[0.08] text-lime'
-                    : 'border-amber-400/30 bg-amber-400/[0.08] text-amber-200'
-                }`}
-              >
-                {overview?.notifications?.configured ? 'live delivery' : 'simulated'}
-              </span>
+                    : ready > 0
+                      ? 'border-amber-400/30 bg-amber-400/[0.08] text-amber-200'
+                      : 'border-white/10 text-muted';
+                return (
+                  <span className={`rounded-full border px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider ${tone}`}>
+                    {proven > 0 ? `${proven} proven` : ready > 0 ? 'none proven' : 'nothing set up'}
+                  </span>
+                );
+              })()}
             </div>
             <div className="flex flex-wrap items-center gap-3 text-[10px] uppercase tracking-[0.12em] text-muted">
-              {(overview?.channels ?? []).map((channel) => (
-                <span
-                  key={channel.channel}
-                  title={channel.detail ?? ''}
-                  className={`flex items-center gap-1.5 rounded-full border px-2 py-0.5 ${
-                    channel.live
-                      ? 'border-lime/30 bg-lime/[0.08] text-lime'
-                      : 'border-white/10 text-muted'
-                  }`}
-                >
-                  <Icon name={channelIcon[channel.channel] ?? 'bolt'} size={11} filled={channel.channel === 'whatsapp'} />
-                  {channel.label}
-                  <span className="text-[8px] font-semibold uppercase tracking-[0.1em] opacity-80">
-                    {channel.live ? 'live' : 'sim'}
+              {(overview?.channels ?? []).map((channel) => {
+                const state = channel.status ?? (channel.live ? 'untested' : 'unconfigured');
+                const tone =
+                  state === 'proven'
+                    ? 'border-lime/30 bg-lime/[0.08] text-lime'
+                    : state === 'degraded'
+                      ? 'border-red-400/30 bg-red-400/[0.07] text-red-300'
+                      : state === 'untested'
+                        ? 'border-amber-400/30 bg-amber-400/[0.06] text-amber-200'
+                        : 'border-white/10 text-muted';
+                const label =
+                  state === 'proven'
+                    ? 'proven'
+                    : state === 'degraded'
+                      ? 'failing'
+                      : state === 'untested'
+                        ? 'unproven'
+                        : 'off';
+                return (
+                  <span
+                    key={channel.channel}
+                    title={
+                      channel.verified
+                        ? `${channel.detail ?? ''}${channel.proofAt ? ` · proven ${new Date(channel.proofAt).toLocaleString()}` : ''}`
+                        : channel.status === 'degraded'
+                          ? `${channel.detail ?? ''} · ${channel.lastError ?? 'last attempt failed'}`
+                          : (channel.detail ?? '')
+                    }
+                    className={`flex items-center gap-1.5 rounded-full border px-2 py-0.5 ${tone}`}
+                  >
+                    <Icon name={channelIcon[channel.channel] ?? 'bolt'} size={11} filled={channel.channel === 'whatsapp'} />
+                    {channel.label}
+                    <span className="text-[8px] font-semibold uppercase tracking-[0.1em] opacity-80">{label}</span>
                   </span>
-                </span>
-              ))}
+                );
+              })}
             </div>
           </div>
 
@@ -762,9 +790,20 @@ export function AdminPage() {
           </ul>
         </section>
 
-        <p className="mt-4 flex items-center gap-2 text-[10.5px] text-muted">
-          <Icon name="lock" size={11} className="text-lime/60" />
-          Demo console · alerts are simulated locally, no third-party webhooks are dispatched.
+        <p className="mt-4 flex items-start gap-2 text-[10.5px] leading-relaxed text-muted">
+          <Icon name="lock" size={11} className="mt-0.5 shrink-0 text-lime/60" />
+          {overview?.notifications?.configured ? (
+            <span>
+              Alerts leave this server for real on the channels marked <span className="text-lime/80">proven</span>. A
+              row without that mark has not been confirmed by its provider — press <span className="text-bone">test</span>{' '}
+              beside it in <span className="text-bone">System</span>.
+            </span>
+          ) : (
+            <span>
+              No alert channel is configured, so nothing is dispatched anywhere. Add one in Vercel →
+              Settings → Environment Variables (see DEPLOYMENT.md → Notifications).
+            </span>
+          )}
         </p>
       </div>
     </main>

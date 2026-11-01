@@ -209,9 +209,14 @@ const {
   telegramWebhookSecretForTests,
 } = await import('../server/notifications.js');
 const { db_, storeReady } = await import('../server/store.js');
-const { retryFailedAlerts, alertOutboxSummary, channelVerification, stampAlertProof } = await import(
-  '../server/webhooks.js'
-);
+const {
+  retryFailedAlerts,
+  alertOutboxSummary,
+  channelVerification,
+  notificationChannels,
+  reconcileEvents,
+  stampAlertProof,
+} = await import('../server/webhooks.js');
 
 /* ------------------------------------------------------------------ *
  * Which variables are missing
@@ -595,6 +600,77 @@ const shopRetry = await retryFailedAlerts({ minAgeMs: 0, limit: 5 });
 check('a failed shop alert is retried', shopRetry.results.some((entry) => entry.id === 'evt_failed_shop' && entry.status === 'delivered'), JSON.stringify(shopRetry.results));
 const shopMail = received.emails[shopBefore];
 check('…through the fan-facing template', /SHOP/i.test(JSON.stringify(shopMail?.subject ?? '')), shopMail?.subject);
+
+/* ------------------------------------------------------------------ *
+ * Old failures stop shouting
+ * ------------------------------------------------------------------ */
+
+console.log('\n▸ A failure that never attempted anything');
+// These rows were written when the variable was missing: nothing was attempted,
+// so calling them FAILED days later reads as an outage.
+const savedSlackUrl = process.env.SLACK_WEBHOOK_URL;
+delete process.env.SLACK_WEBHOOK_URL;
+db_.data.events.unshift({
+  id: 'evt_stale_slack',
+  orderId: null,
+  channel: 'slack',
+  mode: 'live',
+  target: 'operations console',
+  message: 'Manual test alert — failed',
+  status: 'failed',
+  attempts: 1,
+  error: 'SLACK_WEBHOOK_URL is not set',
+  createdAt: new Date(Date.now() - 259_200_000).toISOString(),
+  lastAttemptAt: new Date(Date.now() - 259_200_000).toISOString(),
+});
+reconcileEvents();
+const stale = db_.data.events.find((event) => event.id === 'evt_stale_slack');
+check('an impossible attempt becomes not set up, not failed', stale.status === 'unconfigured', stale.status);
+check('…and says what to add', /SLACK_WEBHOOK_URL/.test(stale.error ?? ''), stale.error);
+check('…and is no longer offered as retryable', !alertOutboxSummary().failures.some((entry) => entry.id === 'evt_stale_slack'));
+check('the outbox counts it separately', alertOutboxSummary().counts.unconfigured >= 1, JSON.stringify(alertOutboxSummary().counts));
+
+// Once the channel is configured, a genuine failure is a failure and stays retryable.
+process.env.SLACK_WEBHOOK_URL = savedSlackUrl;
+db_.data.events.unshift({
+  id: 'evt_conf_failed',
+  orderId: null,
+  channel: 'slack',
+  mode: 'live',
+  status: 'failed',
+  attempts: 1,
+  error: 'HTTP 410 — channel_not_found',
+  createdAt: new Date().toISOString(),
+  lastAttemptAt: new Date().toISOString(),
+});
+reconcileEvents();
+check(
+  'a real failure on a configured channel is left alone',
+  db_.data.events.find((event) => event.id === 'evt_conf_failed')?.status === 'failed',
+);
+db_.data.events = db_.data.events.filter((event) => event.id !== 'evt_conf_failed');
+
+const railRows = notificationChannels();
+check(
+  'the alert log header reads the same verification as the System panel',
+  railRows.every((row) => 'status' in row && 'verified' in row),
+  JSON.stringify(railRows[0]),
+);
+check(
+  'a configured but untested channel is not painted as proven in the header',
+  railRows.find((row) => row.channel === 'slack')?.status === 'untested' &&
+    railRows.find((row) => row.channel === 'slack')?.verified === false,
+  JSON.stringify(railRows.find((row) => row.channel === 'slack')),
+);
+const savedWhatsAppToken = process.env.WHATSAPP_TOKEN;
+delete process.env.WHATSAPP_TOKEN;
+check(
+  '…and one missing a variable is not set up, whatever else is configured',
+  notificationChannels().find((row) => row.channel === 'whatsapp')?.status === 'unconfigured' &&
+    notificationChannels().find((row) => row.channel === 'whatsapp')?.verified === false,
+  JSON.stringify(notificationChannels().find((row) => row.channel === 'whatsapp')),
+);
+process.env.WHATSAPP_TOKEN = savedWhatsAppToken;
 
 /* ------------------------------------------------------------------ *
  * The cron endpoint
