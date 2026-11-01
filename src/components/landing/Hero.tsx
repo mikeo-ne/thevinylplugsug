@@ -10,8 +10,8 @@ import { useAnimatedNumber } from '../../hooks/useAnimatedNumber';
 const stats = [
   { value: '1–1,000', label: 'Run sizes', detail: 'lathe cut to plant run' },
   { value: '7–11 wks', label: 'Factory turnaround', detail: 'after proof sign-off' },
-  { value: '25%', label: 'All-in fee', detail: 'no hidden costs' },
-  { value: '50%', label: 'Deposit', detail: 'balance on shipping' },
+  { value: '6', label: 'Plants on panel', detail: 'EU, UK & Asia' },
+  { value: '50%', label: 'Deposit to start', detail: 'balance on dispatch' },
 ];
 
 export function Hero() {

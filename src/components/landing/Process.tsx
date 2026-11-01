@@ -5,7 +5,7 @@ const steps = [
   {
     step: '01',
     title: 'Configure & quote',
-    body: 'Pick your run size, format and packaging. The calculator shows the true factory cost, our 25% fee and your 50% deposit instantly.',
+    body: 'Pick your run size, format and packaging. The calculator shows the pressing, the freight to Kampala and your 50% deposit instantly.',
     meta: '~2 minutes',
   },
   {

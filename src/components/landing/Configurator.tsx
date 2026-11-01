@@ -61,8 +61,8 @@ export function Configurator() {
             </h2>
           </div>
           <p className="max-w-sm text-sm leading-relaxed text-muted">
-            Every figure below is the real landed factory cost plus our flat 25% management fee.
-            Nothing appears at checkout that you didn't see here.
+            Every figure below is a real landed cost: pressing and packaging, then freight to Kampala,
+            customs clearance and handling. Nothing appears at checkout that you didn't see here.
           </p>
         </div>
 
@@ -317,12 +317,12 @@ export function Configurator() {
                     <span className="font-medium text-lime">
                       {usd(ladder.perRecord, { cents: true })}
                     </span>{' '}
-                    per record — the 25% fee stays the same.
+                    per record — and freight, clearance and handling stay the same.
                   </>
                 ) : (
                   <>
                     You&apos;re on the best rate we can quote: the factory&apos;s 1,000-unit plant run. Only
-                    the 25% management fee sits on top.
+                    freight, clearance and handling sit on top.
                   </>
                 )}
               </p>
@@ -394,12 +394,15 @@ export function Configurator() {
                   )}
                   <div className="my-2.5 h-px bg-white/[0.07]" />
                   <Row
-                    label="Total factory cost"
+                    label="Production subtotal"
                     value={usd(animatedFactory, { cents: true })}
                     strong
                   />
+                  {/* The 25% is real money and has to appear in the arithmetic, but
+                      it is not "a fee on top" — it is the freight, clearance and
+                      handling that come with the record. Labelled for what it buys. */}
                   <Row
-                    label="7H management fee · 25%"
+                    label="Freight to Kampala, customs & handling"
                     value={usd(animatedFee, { cents: true })}
                     accent
                   />

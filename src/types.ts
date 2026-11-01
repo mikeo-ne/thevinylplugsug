@@ -264,6 +264,8 @@ export interface Order {
     awaitingConfirmation?: { reason: string; amountUgx: number; dueUgx: number; at: string };
   };
   files: DraftFiles;
+  /** The numbered document this order was issued (see server/invoices.js). */
+  invoice?: InvoiceSummary | null;
   plantPreference?: string;
   plantHandoff?: {
     plant: string;
@@ -319,6 +321,25 @@ export interface PlantPayload {
   };
   notes: string;
   replyTo: string;
+}
+
+/**
+ * A client-facing invoice. It never carries the brokerage line — the price is
+ * all-in — so the margin is a console-only number (`margin` on the admin view).
+ */
+export interface InvoiceSummary {
+  number: string;
+  issuedAt: string;
+  status: string;
+  url: string;
+  amounts?: {
+    totalUsd: number;
+    depositUsd: number;
+    paidUsd: number;
+    awaitingUsd: number;
+    outstandingUsd: number;
+    balanceUsd: number;
+  };
 }
 
 export interface WebhookEvent {
@@ -584,6 +605,10 @@ export interface AlertChannelVerification {
   ready: boolean;
   verified: boolean;
   status: 'proven' | 'untested' | 'degraded' | 'unconfigured';
+  /** `click_to_chat` means WhatsApp works through wa.me links without a token. */
+  mode?: 'api' | 'click_to_chat' | 'not_set_up';
+  /** True when the "not configured" state is by design, not a fault. */
+  notFault?: boolean;
   fingerprint: string | null;
   proofAt: string | null;
   lastAttemptAt: string | null;
@@ -610,6 +635,8 @@ export interface AlertChannelSummary {
   ready?: boolean;
   verified?: boolean;
   status?: 'proven' | 'untested' | 'degraded' | 'unconfigured';
+  /** WhatsApp works through wa.me links even with no Cloud API token. */
+  clickToChat?: boolean;
   proofAt?: string | null;
   lastError?: string | null;
 }

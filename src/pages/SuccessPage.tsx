@@ -6,6 +6,7 @@ import { useToast } from '../components/ui/Toast';
 import { dateTime, relativeTime, usd, statusLabel } from '../lib/format';
 import { useRates } from '../store/RatesContext';
 import { whatsappUrl } from '../lib/contact';
+import { depositWhatsAppLink, invoiceUrl, orderWhatsAppLink, ussdCodeFor, ussdDialUrl } from '../lib/handoff';
 import type { Order, WebhookEvent } from '../types';
 import { Icon, type IconName } from '../components/ui/Icon';
 import { StatusPill } from '../components/ui/StatusPill';
@@ -165,6 +166,22 @@ export function SuccessPage() {
             </button>
           </div>
 
+          <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
+            <a
+              className="btn-ghost h-9 px-3.5 text-[12px]"
+              href={invoiceUrl(order.id)}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <Icon name="printer" size={14} />
+              Invoice {order.invoice?.number ?? ''}
+            </a>
+            <a className="btn-lime h-9 px-3.5 text-[12px]" href={orderWhatsAppLink(order)} target="_blank" rel="noreferrer">
+              <Icon name="whatsapp" size={14} />
+              Send this order on WhatsApp
+            </a>
+          </div>
+
           <div className="mt-3 flex flex-wrap items-center justify-center gap-2 text-[11px] text-muted">
             <StatusPill status={order.payment.status} />
             <span>Filed {dateTime(order.createdAt)}</span>
@@ -230,6 +247,27 @@ export function SuccessPage() {
                     {method && (
                       <DepositPrompt order={order} method={method} onChanged={() => undefined} />
                     )}
+
+                    {/* Proof of payment travels in the chat the desk already reads. */}
+                    <div className="flex flex-wrap items-center gap-2 text-[11.5px]">
+                      <a
+                        className="btn-ghost h-8 px-3 text-[11.5px]"
+                        href={depositWhatsAppLink(order, { paid: true })}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        <Icon name="whatsapp" size={13} />
+                        Send proof of payment
+                      </a>
+                      <span className="text-muted">or dial</span>
+                      <a
+                        className="num rounded-md border border-white/12 px-2 py-1 text-[11.5px] text-bone transition-colors hover:border-lime/40 hover:text-lime"
+                        href={ussdDialUrl(ussdCodeFor(order.payment.method))}
+                      >
+                        {ussdCodeFor(order.payment.method)}
+                      </a>
+                      <span className="text-muted">no data needed</span>
+                    </div>
 
                     {order.payment.method === 'card_bank' && (
                       <p className="text-[11.5px] leading-relaxed text-muted">
@@ -334,15 +372,15 @@ export function SuccessPage() {
               <div className="my-4 h-px bg-white/[0.07]" />
 
               <dl className="space-y-2 text-[12.5px]">
-                <div className="flex justify-between">
-                  <dt className="text-muted">Factory cost</dt>
-                  <dd className="num text-bone/85">{usd(quote.factoryCost, { cents: true })}</dd>
+                <div className="flex justify-between gap-3">
+                  <dt className="text-muted">Pressing &amp; packaging</dt>
+                  <dd className="num shrink-0 text-bone/85">{usd(quote.factoryCost, { cents: true })}</dd>
                 </div>
-                <div className="flex justify-between">
-                  <dt className="text-muted">Management fee · 25%</dt>
-                  <dd className="num text-bone/85">{usd(quote.managementFee, { cents: true })}</dd>
+                <div className="flex justify-between gap-3">
+                  <dt className="text-muted">Freight to Kampala, customs &amp; handling</dt>
+                  <dd className="num shrink-0 text-bone/85">{usd(quote.managementFee, { cents: true })}</dd>
                 </div>
-                <div className="flex justify-between border-t border-white/[0.07] pt-2">
+                <div className="flex justify-between gap-3 border-t border-white/[0.07] pt-2">
                   <dt className="text-bone">Turnkey total</dt>
                   <dd className="num font-medium text-lime">{usd(quote.total, { cents: true })}</dd>
                 </div>

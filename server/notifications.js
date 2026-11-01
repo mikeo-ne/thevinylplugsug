@@ -466,7 +466,13 @@ export function unconfiguredMessage(channel, missing = []) {
     return 'TELEGRAM_BOT_TOKEN is missing — paste the token from @BotFather.';
   }
   if (channel === 'email') return `Email is not set up yet: ${list}.`;
-  if (channel === 'whatsapp') return `WhatsApp is not set up yet: ${list}. Telegram needs no business account — use that instead.`;
+  // Not a fault, and deliberately worded that way. Orders, invoices and deposit
+  // requests already reach the desk through click-to-chat links (wa.me), which
+  // need no credentials at all. Server-sent WhatsApp alerts are an upgrade, not a
+  // missing piece — the business account behind them takes days to approve.
+  if (channel === 'whatsapp') {
+    return `WhatsApp is in click-to-chat mode: order, invoice and deposit links open wa.me with the message pre-filled, so clients reach the desk without a token. Server-sent alerts need ${list} (a Meta business account — steps are in BRIEF-2026-11-01.md).`;
+  }
   return `Not configured — ${list} ${missing.length === 1 ? 'is' : 'are'} missing.`;
 }
 

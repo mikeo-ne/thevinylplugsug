@@ -462,7 +462,11 @@ const savedToken = process.env.WHATSAPP_TOKEN;
 delete process.env.WHATSAPP_TOKEN;
 const noWhatsApp = await sendTestAlert('whatsapp');
 check('whatsapp without a token is unconfigured, not broken', noWhatsApp.status === 'unconfigured', noWhatsApp.status);
-check('…and points at Telegram instead', /Telegram/.test(noWhatsApp.error ?? ''), noWhatsApp.error);
+check(
+  '…and says what already works instead of calling it a fault',
+  /click-to-chat/.test(noWhatsApp.error ?? '') && !/not set up yet/i.test(noWhatsApp.error ?? ''),
+  noWhatsApp.error,
+);
 check('whatsapp names the missing variables', noWhatsApp.missing?.includes('WHATSAPP_TOKEN'), JSON.stringify(noWhatsApp.missing));
 process.env.WHATSAPP_TOKEN = savedToken;
 
