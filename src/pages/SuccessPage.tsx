@@ -9,6 +9,7 @@ import { whatsappUrl } from '../lib/contact';
 import type { Order, WebhookEvent } from '../types';
 import { Icon, type IconName } from '../components/ui/Icon';
 import { StatusPill } from '../components/ui/StatusPill';
+import { DepositPrompt } from '../components/order/DepositPrompt';
 
 const channelIcon: Record<string, IconName> = {
   slack: 'hash',
@@ -225,27 +226,17 @@ export function SuccessPage() {
                       </div>
                     </div>
 
-                    <p className="text-[11.5px] leading-relaxed text-muted">
-                      {order.payment.method === 'mtn_momo' && (
-                        <>
-                          Dial <span className="text-bone">*165*3#</span>, choose “Pay Merchant” and enter the
-                          merchant number above with reference <span className="text-bone">{order.id}</span>.
-                        </>
-                      )}
-                      {order.payment.method === 'airtel_money' && (
-                        <>
-                          Dial <span className="text-bone">*185*9#</span>, select “Pay Bill” and use reference{' '}
-                          <span className="text-bone">{order.id}</span>.
-                        </>
-                      )}
-                      {order.payment.method === 'card_bank' && (
-                        <>
-                          A pro-forma invoice with a card link and SWIFT instructions is on its way to{' '}
-                          <span className="text-bone">{order.client.email}</span>.
-                        </>
-                      )}{' '}
-                      Once paid, WhatsApp the receipt to management and your order moves to proofing.
-                    </p>
+                    {/* A real prompt on a real phone — with the manual route below it. */}
+                    {method && (
+                      <DepositPrompt order={order} method={method} onChanged={() => undefined} />
+                    )}
+
+                    {order.payment.method === 'card_bank' && (
+                      <p className="text-[11.5px] leading-relaxed text-muted">
+                        A pro-forma invoice with a card link and SWIFT instructions is on its way to{' '}
+                        <span className="text-bone">{order.client.email}</span>.
+                      </p>
+                    )}
 
                     <div className="flex flex-col gap-2 sm:flex-row">
                       <a

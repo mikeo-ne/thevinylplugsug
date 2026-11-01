@@ -41,11 +41,16 @@ Once `main` is up to date, any Vercel project connected to this repository deplo
 | `FX_CACHE_SECONDS` | no     | `3600`                               | How long a fetched rate is reused                  |
 | `FX_STALE_SECONDS` | no     | `21600`                              | How long a stale rate may still be quoted in an outage |
 | `FX_UGX_FLOOR`   | no       | `4360`                               | Never quote UGX below this, whatever the market does |
-| `MAX_UPLOAD_MB`  | no       | `4`                                  | Defaults to 4 on Vercel, 80 elsewhere              |
+| `MAX_UPLOAD_MB`  | no       | `250`                                | Per-file ceiling. Files travel in ~3MB slices, so this is a storage decision, not a body-size one |
+| `UPLOAD_CHUNK_BYTES` | no   | `3145728`                            | Slice size for chunked uploads (must stay under Vercel's 4.5MB body cap) |
 | `CONTACT_EMAIL`  | no       | `7hmusicgroupug@gmail.com`           | Shown in the footer, alerts and email replies      |
 | `CONTACT_PHONE`  | no       | `+256 768 261 003`                   | Displayed phone number                             |
 | `CONTACT_WHATSAPP` | no     | `256768261003`                       | Digits only — powers every `wa.me` link            |
 | `MOMO_NUMBER`    | no       | `0768 261 003`                       | MTN merchant number shown at checkout              |
+| `MOMO_SUBSCRIPTION_KEY` / `MOMO_API_USER` / `MOMO_API_KEY` | no | from momodeveloper.mtn.com | Enables real **MTN MoMo collection prompts** for the deposit. Unset = dial-the-merchant only |
+| `MOMO_TARGET_ENV` | no      | `mtnuganda` / `sandbox`              | MTN target environment (must match the keys)        |
+| `MOMO_AUTO_CONFIRM` | no    | `false`                              | `true` = a successful collection confirms the deposit without a human. Off by default on purpose |
+| `AIRTEL_CLIENT_ID` / `AIRTEL_CLIENT_SECRET` | no | from the Airtel developer portal | Enables Airtel Money collection prompts |
 | `AIRTEL_NUMBER`  | no       | `0700 000 000`                       | Shows "Issued on your invoice" until set           |
 | `BANK_ACCOUNT`   | no       | `Stanbic · 9030000000000`            | Shows "Issued on the invoice" until set            |
 | `DATA_DIR`       | no       | `/tmp/7h-data`                       | Defaults to `/tmp/7h-data` on Vercel               |
@@ -293,7 +298,7 @@ There are two honest states for an alert: it left, or it did not. The console sh
 `npm run test:alerts` exercises all of this against a local sink, including a provider rejection and
 the retry sweep — no credentials required.
 
-## 3. Where the data lives
+## 3. Where the data lives, and how money and files move
 
 Out of the box the app writes a JSON document to disk. That is fine on a laptop and **not** fine on
 Vercel, where the filesystem is per-instance and wiped on every cold start. One environment variable
@@ -354,20 +359,67 @@ record just sold out.
 The console's **System** panel says which driver is live, whether it survives a deploy, and how many
 rows it holds — and `GET /api/health` reports the same thing publicly (no secrets) for uptime checks.
 
+### Taking the deposit by mobile money
+
+The deposit block used to be paperwork: a merchant number, a `*165*3#` instruction and a reference the
+client could mistype. It now sends a real collection request to the wallet on the order.
+
+1. **Get MTN Collections credentials** — [momodeveloper.mtn.com](https://momodeveloper.mtn.com) →
+   subscribe to *Collections* → your profile page shows the **subscription key**, and you create an
+   **API user** + **API key** (the API user must be created for the `collection` product). Set
+   `MOMO_SUBSCRIPTION_KEY`, `MOMO_API_USER`, `MOMO_API_KEY`, and `MOMO_TARGET_ENV` (`sandbox` while
+   testing, `mtnuganda` for live). Airtel is the same idea: `AIRTEL_CLIENT_ID` + `AIRTEL_CLIENT_SECRET`
+   from the Airtel developer portal.
+2. **What the client sees.** On their order page: *Send payment prompt* → a prompt appears on the
+   phone → they approve → the page polls the provider every five seconds and says what happened
+   (`waiting for approval` → `paid — awaiting desk`). If the wallet declines, the page says why and
+   offers another request or the manual dial instructions.
+3. **What the desk sees.** The order panel gains a **Mobile money** block: the number on file, every
+   attempt with its status, a **refresh** that re-asks the provider, and **Confirm collected deposit**
+   once money has actually arrived. `GET /api/health` reports each rail's readiness and the missing
+   variables; `/api/admin/deposits/sweep` (and the daily cron) re-polls anything still pending, so a
+   lost webhook is not a lost payment.
+4. **The deposit gate is unchanged.** A `SUCCESSFUL` collection records what arrived; it does **not**
+   put an order in front of a plant. Somebody in the console confirms it. If you ever want that
+   automatic, set `MOMO_AUTO_CONFIRM=true` — and note it still refuses to confirm unless the
+   collected amount covers the full 50%.
+
+Without credentials the whole rail answers honestly: `503` with the exact variable names and the
+manual merchant-number instructions, never a fake "payment sent".
+
+### Uploaded files: bigger, durable, findable
+
+- **Size.** Vercel rejects a serverless request body over ~4.5MB, which is why 4MB was the old cap for
+  a WAV. The browser now slices each file into ~3MB chunks, sends them one at a time, and asks the
+  server to seal the result — so the ceiling is `MAX_UPLOAD_MB` (250 by default) rather than the
+  platform's. A dropped connection costs one chunk, not the file, and the client compares the sha256
+  the server returns with the one it sent.
+- **Durability.** With `DATABASE_URL` set, chunks go into `upload_chunks` in Postgres, so a master
+  survives cold starts, redeploys and rollbacks. Without a database they go to `DATA_DIR/blobs` and
+  the console labels the store **ephemeral** rather than pretending otherwise.
+- **Organisation.** Every file carries a folder — `orders/7H-2026-8K2Q/audio` once attached to an
+  order, `inbox/2026-11/artwork` before that — plus its checksum, chunk count and byte size.
+- **Reachability.** `/admin` → **File store** lists everything by folder with size, checksum, storage
+  backend, a copyable permanent download link (`/api/files/:id/download`) and delete. The same link
+  works from an email, a phone or a plant's browser. `GET /api/files/:id` gives metadata without the
+  bytes.
+- **Housekeeping.** The daily cron reaps uploads nobody finished (48h, `UPLOAD_ABANDONED_HOURS`), so an
+  abandoned 200MB transfer does not sit in the database forever.
+
+Note the storage bill: a Postgres free tier is small compared with a few album masters. Put
+`MAX_UPLOAD_MB` where you want the line, or point `DATABASE_URL` at a bigger instance as masters
+accumulate.
+
 ## 4. What happens on Vercel (and its limits)
 
 Vercel functions have an **ephemeral, per-instance filesystem**. With a database configured that no
-longer matters for orders, stock or the alert log; it still matters for two things:
+longer matters for orders, stock, the alert log or uploaded files. Two limits remain worth knowing:
 
-- **Uploaded masters and artwork** land in `/tmp/7h-uploads` and are served by
-  `/api/files/:id/download`. They vanish on a cold start, so a real client should send a
-  WeTransfer / Drive / Dropbox link (the portal offers that) until uploads move to Vercel Blob.
-- **Direct uploads are capped at 4 MB** on Vercel — the platform rejects larger bodies before
-  Express sees them. The portal reads `MAX_UPLOAD_MB` from `/api/config` and steers clients
-  accordingly.
-
-Moving uploads to Blob is a single swap: `multer.memoryStorage()` + `put()` in `POST /api/uploads`,
-and a 302 to the blob URL in `/api/files/:id/download`.
+- **Request bodies** are capped around 4.5MB. Anything larger travels in ~3MB chunks (see above); a
+  single-shot `POST /api/uploads` is for small files only.
+- **Function memory and time.** Downloads stream chunk by chunk rather than buffering the file, and a
+  250MB upload is ~85 requests, so a very large master on a slow connection takes a while — which is
+  exactly why the progress bar shows bytes, not a spinner.
 
 ## 5. Verify before you merge
 

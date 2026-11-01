@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
-import { api, ApiError } from '../../lib/api';
+import { ApiError } from '../../lib/api';
 import { bytes } from '../../lib/format';
+import { humanBytes, uploadOne } from '../../lib/upload';
 import type { UploadedFile } from '../../types';
 import { Icon } from '../ui/Icon';
 
@@ -24,14 +25,14 @@ const ACCEPT = {
 const COPY = {
   audio: {
     title: 'Master audio',
-    hint: 'WAV / AIFF / FLAC, 24-bit preferred · up to 80MB per file',
+    hint: 'WAV / AIFF / FLAC, 24-bit preferred',
     linkLabel: 'Or paste a master download link (WeTransfer, Drive, Dropbox)',
     linkPlaceholder: 'https://wetransfer.com/downloads/…',
     icon: 'file-audio' as const,
   },
   artwork: {
     title: 'Cover artwork',
-    hint: 'Print-ready CMYK PDF, 300dpi, 3mm bleed · up to 80MB',
+    hint: 'Print-ready CMYK PDF, 300dpi, 3mm bleed',
     linkLabel: 'Or paste an artwork link (Drive, Dropbox, Frame.io)',
     linkPlaceholder: 'https://drive.google.com/…',
     icon: 'file-image' as const,
@@ -51,54 +52,50 @@ export function FileDropzone({
 }: FileDropzoneProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
-  const [progress, setProgress] = useState<Record<string, number>>({});
+  // Real byte counts, not an animated guess: the client can see the transfer move.
+  const [progress, setProgress] = useState<Record<string, { percent: number; sent: number; total: number }>>({});
   const [uploadError, setUploadError] = useState<string | null>(null);
   const copy = COPY[kind];
-  const copyHint =
-    maxMb <= 10
-      ? `WAV / AIFF / FLAC · direct uploads capped at ${maxMb}MB — use a link for long masters`
-      : copy.hint;
+  const copyHint = `${copy.hint} · up to ${maxMb}MB per file`;
 
   const upload = useCallback(
     async (incoming: File[]) => {
       if (incoming.length === 0) return;
       setUploadError(null);
 
-      const placeholders: Record<string, number> = {};
-      incoming.forEach((file) => {
-        placeholders[`${file.name}-${file.size}`] = 6;
-      });
-      setProgress((prev) => ({ ...prev, ...placeholders }));
-
-      const timer = window.setInterval(() => {
-        setProgress((prev) => {
-          const next = { ...prev };
-          Object.keys(next).forEach((key) => {
-            if (next[key] < 88) next[key] = Math.min(88, next[key] + Math.random() * 16);
+      const added: UploadedFile[] = [];
+      for (const file of incoming) {
+        const key = `${file.name}-${file.size}`;
+        setProgress((prev) => ({ ...prev, [key]: { percent: 0, sent: 0, total: file.size } }));
+        try {
+          const uploaded = await uploadOne(file, kind, {
+            onProgress: (update) =>
+              setProgress((prev) => ({
+                ...prev,
+                [key]: { percent: update.percent, sent: update.sent, total: update.total },
+              })),
           });
-          return next;
-        });
-      }, 260);
-
-      try {
-        const result = await api.upload(
-          kind === 'audio' ? { audio: incoming, artwork: [] } : { audio: [], artwork: incoming },
-        );
-        window.clearInterval(timer);
-        setProgress((prev) => {
-          const next = { ...prev };
-          Object.keys(next).forEach((key) => (next[key] = 100));
-          return next;
-        });
-        window.setTimeout(() => setProgress({}), 600);
-        onAdd(result.uploads.filter((file) => file.kind === kind));
-      } catch (uploadFailure) {
-        window.clearInterval(timer);
-        setProgress({});
-        setUploadError(
-          uploadFailure instanceof ApiError ? uploadFailure.message : 'Upload failed. Please try again.',
-        );
+          added.push(uploaded);
+          setProgress((prev) => ({
+            ...prev,
+            [key]: { percent: 100, sent: file.size, total: file.size },
+          }));
+        } catch (uploadFailure) {
+          setProgress((prev) => {
+            const next = { ...prev };
+            delete next[key];
+            return next;
+          });
+          setUploadError(
+            uploadFailure instanceof ApiError || uploadFailure instanceof Error
+              ? uploadFailure.message
+              : 'Upload failed. Please try again.',
+          );
+        }
       }
+
+      if (added.length > 0) onAdd(added.filter((file) => file.kind === kind));
+      window.setTimeout(() => setProgress({}), 1200);
     },
     [kind, onAdd],
   );
@@ -108,7 +105,9 @@ export function FileDropzone({
     const incoming = Array.from(fileList);
     const tooBig = incoming.find((file) => file.size > maxMb * 1024 * 1024);
     if (tooBig) {
-      setUploadError(`"${tooBig.name}" is over ${maxMb}MB. Use a WeTransfer or Drive link instead.`);
+      setUploadError(
+        `"${tooBig.name}" is ${humanBytes(tooBig.size)} — the limit is ${maxMb}MB per file. Use a WeTransfer or Drive link, or split the album.`,
+      );
       return;
     }
     void upload(incoming);
@@ -189,12 +188,16 @@ export function FileDropzone({
             <li key={key} className="rounded-lg border border-white/[0.08] bg-white/[0.02] px-3 py-2.5">
               <div className="flex items-center justify-between text-[11px] text-muted">
                 <span className="truncate">{key.split('-').slice(0, -1).join('-')}</span>
-                <span className="num">{value < 100 ? `${Math.round(value)}%` : 'encrypted ✓'}</span>
+                <span className="num">
+                  {value.percent < 100
+                    ? `${value.percent}% · ${humanBytes(value.sent)} of ${humanBytes(value.total)}`
+                    : `${humanBytes(value.total)} ✓`}
+                </span>
               </div>
               <div className="mt-2 h-1 overflow-hidden rounded-full bg-white/10">
                 <div
-                  className="h-full rounded-full bg-lime transition-all duration-300"
-                  style={{ width: `${value}%` }}
+                  className="h-full rounded-full bg-lime transition-all duration-200"
+                  style={{ width: `${value.percent}%` }}
                 />
               </div>
             </li>

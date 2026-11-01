@@ -55,6 +55,30 @@ import { currentUgxRate, getRates } from './rates.js';
 import { BASE_CURRENCY, DISPLAY_CURRENCIES } from '../shared/currency.js';
 import { db_, ensureDirs, newOrderId, newId, refreshStore, storeReady, UPLOAD_DIR } from './store.js';
 import {
+  CHUNK_BYTES,
+  chunkStore,
+  expectedChunks,
+  finaliseUpload,
+  folderFor,
+  dropUpload,
+  openUploadStream,
+  readUpload,
+  reapAbandonedUploads,
+  storageStats,
+  uploadUrl,
+} from './uploads.js';
+import {
+  checkDeposit,
+  depositUgxFor,
+  maskMsisdn,
+  normaliseMsisdn,
+  paymentsHealth,
+  requestDeposit,
+  unconfiguredPaymentMessage,
+  verifyCallbackSecret,
+  walletFeeUgx,
+} from './momo.js';
+import {
   alertOutboxSummary,
   automationConfig,
   channelVerification,
@@ -144,6 +168,19 @@ api.get('/api/health', async (req, res) => {
     // `ready` is the environment; `verified` is proof. A channel can be ready and
     // still unverified — that is the difference between "the variables are set"
     // and "a provider accepted a message with these credentials".
+    payments: paymentsHealth().map((rail) => ({
+      provider: rail.provider,
+      ready: rail.ready,
+      environment: rail.environment,
+      missing: rail.missing,
+    })),
+    storage: await storageStats().then((stats) => ({
+      driver: stats.driver,
+      durable: stats.durable,
+      files: stats.files,
+      bytes: stats.bytes,
+      maxUploadMb: MAX_UPLOAD_MB,
+    })),
     alerts: {
       channels: channelVerification().map((entry) => ({
         channel: entry.channel,
@@ -159,71 +196,217 @@ api.get('/api/health', async (req, res) => {
 });
 
 /* ------------------------------------------------------------------ *
- * Uploads
+ * Uploads — chunked, durable, and filed where you can find them
  * ------------------------------------------------------------------ */
 
 ensureDirs();
 
 const AUDIO_EXT = new Set(['.wav', '.mp3', '.aif', '.aiff', '.flac', '.m4a', '.aac']);
 const ART_EXT = new Set(['.pdf', '.jpg', '.jpeg', '.png', '.tif', '.tiff']);
-
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, UPLOAD_DIR),
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase();
-    const base = path
-      .basename(file.originalname, path.extname(file.originalname))
-      .replace(/[^a-z0-9-_]+/gi, '-')
-      .slice(0, 48)
-      .toLowerCase();
-    cb(null, `${Date.now()}-${crypto.randomBytes(4).toString('hex')}-${base || 'file'}${ext}`);
-  },
-});
-
-const upload = multer({
-  storage,
-  limits: { fileSize: MAX_UPLOAD_MB * 1024 * 1024, files: 6 },
-  fileFilter: (_req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase();
-    const field = file.fieldname;
-    if (field === 'audio' && AUDIO_EXT.has(ext)) return cb(null, true);
-    if (field === 'artwork' && ART_EXT.has(ext)) return cb(null, true);
-    const expected = field === 'artwork' ? 'PDF, JPG, PNG or TIFF' : 'WAV, AIFF, FLAC or MP3';
-    return cb(new Error(`Unsupported file type "${ext || file.originalname}". ${field === 'artwork' ? 'Artwork' : 'Audio'} must be ${expected}.`));
-  },
-});
+const MAX_FILES_PER_ORDER = 8;
 
 const fileKind = (field) => (field === 'artwork' ? 'artwork' : 'audio');
+const extOf = (name) => path.extname(String(name ?? '')).toLowerCase();
+
+const safeBaseName = (name) =>
+  path
+    .basename(String(name ?? 'file'), path.extname(String(name ?? 'file')))
+    .replace(/[^a-z0-9-_]+/gi, '-')
+    .slice(0, 48)
+    .toLowerCase() || 'file';
+
+/** Which extension sets are allowed, and the sentence to say when one is not. */
+function extensionProblem(kind, ext) {
+  const allowed = kind === 'artwork' ? ART_EXT : AUDIO_EXT;
+  if (allowed.has(ext)) return null;
+  return kind === 'artwork'
+    ? `Unsupported file type "${ext || 'unknown'}". Artwork must be PDF, JPG, PNG or TIFF.`
+    : `Unsupported file type "${ext || 'unknown'}". Audio must be WAV, AIFF, FLAC or MP3.`;
+}
+
+/**
+ * Start a chunked upload.
+ *
+ * The browser declares the size up front, which is what lets us refuse a file
+ * over the limit before a single byte moves — and what lets it resume a transfer
+ * that dropped halfway through a 200 MB master.
+ */
+api.post('/api/uploads/start', async (req, res) => {
+  const body = req.body ?? {};
+  const name = text(body.name, 200);
+  const size = Number(body.size);
+  const kind = fileKind(body.kind ?? body.field);
+
+  if (!name) return res.status(400).json({ error: 'A file name is required.' });
+  const problem = extensionProblem(kind, extOf(name));
+  if (problem) return res.status(400).json({ error: problem });
+  if (!Number.isFinite(size) || size <= 0) return res.status(400).json({ error: 'A file size is required.' });
+  if (size > MAX_UPLOAD_MB * 1024 * 1024) {
+    return res.status(413).json({
+      error: `That file is ${Math.round(size / 1024 / 1024)}MB. The limit is ${MAX_UPLOAD_MB}MB — export a smaller master or split the album.`,
+      code: 'file_too_large',
+      maxUploadMb: MAX_UPLOAD_MB,
+    });
+  }
+
+  const db = db_.data;
+  const orderId = text(body.orderId, 40).toUpperCase() || null;
+  const chunks = expectedChunks(size);
+  const now = new Date();
+
+  const record = {
+    id: newId('upl'),
+    originalName: name,
+    storedName: `${Date.now()}-${crypto.randomBytes(4).toString('hex')}-${safeBaseName(name)}${extOf(name)}`,
+    mimeType: text(body.mimeType, 120) || 'application/octet-stream',
+    size,
+    kind,
+    orderId,
+    folder: folderFor({ orderId, kind, createdAt: now }),
+    chunks,
+    chunkBytes: CHUNK_BYTES,
+    status: 'uploading',
+    createdAt: now.toISOString(),
+    url: null,
+  };
+
+  db.uploads.unshift(record);
+  db_.save();
+
+  res.status(201).json({
+    upload: { ...record, url: null },
+    chunkBytes: CHUNK_BYTES,
+    chunks,
+  });
+});
+
+/**
+ * One chunk, raw bytes.
+ *
+ * Deliberately not multipart: a 3 MB WAV slice is already framed, and multipart
+ * would spend a kilobyte of every request on boundaries and headers we drop.
+ */
+api.put(
+  '/api/uploads/:id/chunk/:seq',
+  express.raw({ type: '*/*', limit: CHUNK_BYTES + 64 * 1024 }),
+  async (req, res) => {
+    const db = db_.data;
+    const record = db.uploads.find((item) => item.id === req.params.id);
+    if (!record) return res.status(404).json({ error: 'Upload not found.' });
+    if (record.status === 'complete') return res.status(409).json({ error: 'That upload is already complete.' });
+
+    const seq = Number(req.params.seq);
+    if (!Number.isInteger(seq) || seq < 0 || seq >= record.chunks) {
+      return res.status(400).json({ error: `Chunk ${req.params.seq} is out of range for this file.` });
+    }
+    const buffer = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
+    if (buffer.length === 0) return res.status(400).json({ error: 'Empty chunk.' });
+    if (buffer.length > CHUNK_BYTES) {
+      return res.status(413).json({ error: `Chunks are limited to ${CHUNK_BYTES} bytes.` });
+    }
+
+    const store = await chunkStore();
+    const written = await store.put(record.id, seq, buffer);
+    res.json({ ok: true, seq, bytes: written, received: true });
+  },
+);
+
+/** Finish: every chunk present, total matches, checksum computed. */
+api.post('/api/uploads/:id/complete', async (req, res) => {
+  const db = db_.data;
+  const record = db.uploads.find((item) => item.id === req.params.id);
+  if (!record) return res.status(404).json({ error: 'Upload not found.' });
+  if (record.status === 'complete') return res.json({ upload: record });
+
+  const result = await finaliseUpload(record);
+  if (!result.ok) return res.status(409).json({ error: result.error, ...result });
+
+  // The client can prove the bytes it sent are the bytes that landed.
+  const claimed = text(req.body?.sha256, 64).toLowerCase();
+  if (claimed && claimed !== result.sha256) {
+    return res.status(409).json({
+      error: 'Checksum mismatch — the file that arrived is not the file that was sent. Upload it again.',
+      code: 'checksum_mismatch',
+      sha256: result.sha256,
+    });
+  }
+
+  record.status = 'complete';
+  record.completedAt = new Date().toISOString();
+  record.sha256 = result.sha256;
+  record.storage = result.storage;
+  record.storageLabel = result.storageLabel;
+  record.bytes = result.bytes;
+  record.chunks = result.chunks;
+  record.url = uploadUrl(record.id);
+  db_.save();
+
+  res.json({ upload: record, sha256: result.sha256, storage: result.storageLabel });
+});
+
+/**
+ * Single-shot upload, kept for small files and existing clients.
+ *
+ * The bytes still go through the same chunk store, so a 3 MB PDF uploaded this
+ * way is just as durable as a 300 MB WAV uploaded in slices.
+ */
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_UPLOAD_MB * 1024 * 1024, files: MAX_FILES_PER_ORDER },
+});
 
 api.post('/api/uploads', (req, res) => {
   upload.fields([
     { name: 'audio', maxCount: 4 },
     { name: 'artwork', maxCount: 4 },
-  ])(req, res, (error) => {
+  ])(req, res, async (error) => {
     if (error) {
       const message =
         error.code === 'LIMIT_FILE_SIZE'
-          ? `That file is over the ${MAX_UPLOAD_MB}MB limit. Share a WeTransfer or Dropbox link instead.`
+          ? `That file is over the ${MAX_UPLOAD_MB}MB single-request limit. Large masters upload in chunks automatically — try again from the order form.`
           : error.message;
       return res.status(400).json({ error: message });
     }
 
     const files = req.files ?? {};
     const records = [];
+    const store = await chunkStore();
 
     for (const field of ['audio', 'artwork']) {
       for (const file of files[field] ?? []) {
-        const id = newId('upl');
+        const problem = extensionProblem(fileKind(field), extOf(file.originalname));
+        if (problem) return res.status(400).json({ error: problem });
+
+        const now = new Date();
         const record = {
-          id,
+          id: newId('upl'),
           originalName: file.originalname,
-          storedName: file.filename,
+          storedName: `${Date.now()}-${crypto.randomBytes(4).toString('hex')}-${safeBaseName(file.originalname)}${extOf(file.originalname)}`,
           mimeType: file.mimetype,
           size: file.size,
           kind: fileKind(field),
-          createdAt: new Date().toISOString(),
-          url: `/api/files/${id}/download`,
+          orderId: text(req.body?.orderId, 40).toUpperCase() || null,
+          folder: folderFor({ orderId: text(req.body?.orderId, 40).toUpperCase() || null, kind: fileKind(field), createdAt: now }),
+          chunks: expectedChunks(file.size),
+          chunkBytes: CHUNK_BYTES,
+          createdAt: now.toISOString(),
         };
+
+        for (let index = 0; index < record.chunks; index += 1) {
+          const slice = file.buffer.subarray(index * CHUNK_BYTES, (index + 1) * CHUNK_BYTES);
+          await store.put(record.id, index, slice);
+        }
+        const finalised = await finaliseUpload(record);
+        Object.assign(record, {
+          status: 'complete',
+          completedAt: new Date().toISOString(),
+          sha256: finalised.sha256 ?? null,
+          storage: finalised.storage ?? store.name,
+          storageLabel: finalised.storageLabel ?? store.label,
+          bytes: file.size,
+          url: uploadUrl(record.id),
+        });
+
         db_.data.uploads.unshift(record);
         records.push(record);
       }
@@ -236,7 +419,21 @@ api.post('/api/uploads', (req, res) => {
   });
 });
 
-api.get('/api/files/:id/download', (req, res) => {
+/** What the order form should tell the client about limits. */
+api.get('/api/uploads/limits', async (_req, res) => {
+  const storage = await storageStats();
+  res.json({
+    maxUploadMb: MAX_UPLOAD_MB,
+    chunkBytes: CHUNK_BYTES,
+    maxFiles: MAX_FILES_PER_ORDER,
+    audio: [...AUDIO_EXT],
+    artwork: [...ART_EXT],
+    storage: { driver: storage.driver, label: storage.label, durable: storage.durable },
+  });
+});
+
+/** Download. Streams from whichever store holds the bytes. */
+api.get('/api/files/:id/download', async (req, res) => {
   const db = db_.data;
   const record =
     db.uploads.find((item) => item.id === req.params.id) ??
@@ -244,18 +441,114 @@ api.get('/api/files/:id/download', (req, res) => {
 
   if (!record) return res.status(404).json({ error: 'File not found.' });
 
+  // Real artist filenames contain em dashes, accents and brackets, and a raw
+  // header value throws. RFC 5987: an ASCII fallback plus the UTF-8 original.
+  const original = String(record.originalName ?? 'file');
+  const ascii = original.replace(/[^\x20-\x7E]+/g, '_').replace(/["\\]/g, '');
+  const encoded = encodeURIComponent(original).replace(
+    /['()*]/g,
+    (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
+  res.setHeader('Content-Disposition', `attachment; filename="${ascii}"; filename*=UTF-8''${encoded}`);
+  res.setHeader('Content-Type', record.mimeType || 'application/octet-stream');
+  if (record.sha256) res.setHeader('X-File-Sha256', record.sha256);
+  if (record.size) res.setHeader('Content-Length', String(record.size));
+
+  // Uploaded through the chunk store (durable, and the only path on Vercel).
+  // Streamed chunk by chunk so a large master never has to fit in memory.
+  if (record.status === 'complete' && record.storage !== 'legacy-disk') {
+    const stream = await openUploadStream(record);
+    if (stream) {
+      const { Readable } = await import('node:stream');
+      return Readable.from(stream).pipe(res);
+    }
+  }
+
+  // Seeded demo records are metadata-only; hand back a signed placeholder so the
+  // console still demonstrates the hand-off workflow.
   const filePath = path.join(UPLOAD_DIR, record.storedName);
   if (!fs.existsSync(filePath)) {
-    // Demo records are metadata-only; hand back a signed placeholder so the admin
-    // console still demonstrates the hand-off workflow.
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
     return res.send(
       `7H MUSIC GROUP — DEMO FILE PLACEHOLDER\n\nFile: ${record.originalName}\nKind: ${record.kind}\nBytes: ${record.size}\n\nThis is seeded demo metadata; real client uploads are streamed from storage.\n`,
     );
   }
 
-  res.setHeader('Content-Disposition', `attachment; filename="${record.originalName.replace(/"/g, '')}"`);
   return res.sendFile(filePath);
+});
+
+/** Metadata without the bytes — what the console's file list reads. */
+api.get('/api/files/:id', (req, res) => {
+  const db = db_.data;
+  const record = db.uploads.find((item) => item.id === req.params.id);
+  if (!record) return res.status(404).json({ error: 'File not found.' });
+  const { storedName, ...safe } = record;
+  res.json({ file: safe });
+});
+
+/**
+ * Every uploaded file, grouped the way they are stored.
+ *
+ * This is the "reachable" half of the storage question: the bytes may live in
+ * Postgres, but if nobody can see the list, name, size or checksum they are not
+ * really filed.
+ */
+api.get('/api/admin/uploads', requireAdmin, async (_req, res) => {
+  const db = db_.data;
+  const storage = await storageStats();
+  const files = db.uploads.map((record) => ({
+    ...record,
+    // The disk name is an implementation detail; the id is the handle.
+    storedName: undefined,
+    downloadUrl: uploadUrl(record.id),
+    linkedOrder: record.orderId
+      ? db.orders.some((order) => order.id === record.orderId)
+        ? record.orderId
+        : null
+      : null,
+  }));
+
+  const groups = {};
+  for (const file of files) {
+    const key = file.folder ?? folderFor({ orderId: file.orderId, kind: file.kind });
+    groups[key] ??= { folder: key, files: [], bytes: 0 };
+    groups[key].files.push(file);
+    groups[key].bytes += Number(file.size ?? 0);
+  }
+
+  res.json({
+    storage,
+    limits: { maxUploadMb: MAX_UPLOAD_MB, chunkBytes: CHUNK_BYTES },
+    files,
+    groups: Object.values(groups).sort((a, b) => a.folder.localeCompare(b.folder)),
+    counts: {
+      files: files.length,
+      complete: files.filter((file) => file.status === 'complete').length,
+      uploading: files.filter((file) => file.status === 'uploading').length,
+      bytes: files.reduce((sum, file) => sum + Number(file.size ?? 0), 0),
+    },
+  });
+});
+
+/** Remove a file and its bytes. */
+api.delete('/api/admin/uploads/:id', requireAdmin, async (req, res) => {
+  const db = db_.data;
+  const index = db.uploads.findIndex((item) => item.id === req.params.id);
+  if (index < 0) return res.status(404).json({ error: 'File not found.' });
+  const [record] = db.uploads.splice(index, 1);
+
+  // Detach from any order that referenced it, so the plant email cannot point at
+  // a file that no longer exists.
+  for (const order of db.orders) {
+    for (const kind of ['audio', 'artwork']) {
+      if (Array.isArray(order.files?.[kind])) {
+        order.files[kind] = order.files[kind].filter((file) => file.id !== record.id);
+      }
+    }
+  }
+  db_.save();
+  await dropUpload(record.id).catch(() => null);
+  res.json({ ok: true, removed: record.id });
 });
 
 /* ------------------------------------------------------------------ *
@@ -284,9 +577,21 @@ api.get('/api/config', (_req, res) => {
     plants: PRESSING_PLANTS,
     limits: {
       maxUploadMb: MAX_UPLOAD_MB,
-      maxFiles: 6,
+      maxFiles: MAX_FILES_PER_ORDER,
+      // Anything bigger than a form post travels in slices of this size.
+      chunkBytes: CHUNK_BYTES,
       audio: ['.wav', '.aif', '.aiff', '.flac', '.mp3', '.m4a', '.aac'],
       artwork: ['.pdf', '.jpg', '.jpeg', '.png', '.tif', '.tiff'],
+    },
+    paymentRails: paymentsHealth().map((rail) => ({
+      provider: rail.provider,
+      ready: rail.ready,
+      environment: rail.environment,
+    })),
+    deposit: {
+      mtn: PAYMENT_METHODS.find((method) => method.id === 'mtn_momo')?.accountNumber ?? null,
+      airtel: PAYMENT_METHODS.find((method) => method.id === 'airtel_money')?.accountNumber ?? null,
+      accountName: COMPANY.name,
     },
   });
 });
@@ -496,6 +801,273 @@ api.post('/api/orders', async (req, res) => {
     },
     quote,
   });
+});
+
+/* ------------------------------------------------------------------ *
+ * Deposit collection — a real prompt on a real phone
+ * ------------------------------------------------------------------ */
+
+const depositRate = new Map();
+/** Three prompts in ten minutes per order is enough; more is harassment. */
+function depositRateLimited(key) {
+  const now = Date.now();
+  const hits = (depositRate.get(key) ?? []).filter((at) => now - at < 10 * 60 * 1000);
+  hits.push(now);
+  depositRate.set(key, hits);
+  return hits.length > 3;
+}
+
+const depositUsd = (order) => Number(order?.quote?.deposit ?? 0);
+const ugxRate = (order) => Number(order?.quote?.fxRate ?? FX_UGX_PER_USD);
+
+const intentView = (intent) => ({
+  id: intent.id,
+  provider: intent.provider,
+  status: intent.status,
+  amountUgx: intent.amountUgx,
+  amountUsd: intent.amountUsd,
+  paidUgx: intent.paidUgx ?? null,
+  feeUgx: intent.feeUgx ?? null,
+  reference: intent.referenceId,
+  payerMasked: intent.payerMasked,
+  requestedAt: intent.requestedAt,
+  checkedAt: intent.checkedAt ?? null,
+  settledAt: intent.settledAt ?? null,
+  error: intent.error ?? null,
+  message: intent.message ?? null,
+  confirmedDeposit: Boolean(intent.confirmedDeposit),
+});
+
+/**
+ * Fold a provider answer into the order.
+ *
+ * SUCCESSFUL is the only status that records money, and even then the deposit is
+ * not "confirmed" until somebody in the console says so — unless the desk has
+ * explicitly opted into automatic confirmation (`MOMO_AUTO_CONFIRM=true`), which
+ * still demands the collected amount cover the whole 50%.
+ */
+async function settleIntent(order, intent, result) {
+  intent.checkedAt = result.checkedAt ?? new Date().toISOString();
+  intent.providerStatus = result.status;
+
+  if (result.status === 'SUCCESSFUL') {
+    const currency = String(result.currency ?? intent.currency ?? 'UGX').toUpperCase();
+    const paid = Number(result.amount ?? intent.amountUgx);
+    intent.status = 'successful';
+    intent.settledAt = intent.settledAt ?? new Date().toISOString();
+    intent.paidUgx = Number.isFinite(paid) ? paid : intent.amountUgx;
+
+    order.payment.collected = {
+      provider: intent.provider,
+      intentId: intent.id,
+      currency,
+      amount: intent.paidUgx,
+      amountUsd: Math.round((intent.paidUgx / ugxRate(order)) * 100) / 100,
+      at: intent.settledAt,
+    };
+    if (currency !== 'UGX') intent.error = `The wallet charged in ${currency}; confirm the UGX amount by hand.`;
+
+    const due = depositUgxFor(order);
+    const autoConfirm = String(process.env.MOMO_AUTO_CONFIRM ?? 'false').toLowerCase() === 'true';
+    const coversDeposit = currency === 'UGX' && intent.paidUgx + 1 >= due;
+
+    if (autoConfirm && coversDeposit) {
+      const required = depositUsd(order);
+      order.payment.status = 'deposit_paid';
+      order.payment.depositPaidUsd = required;
+      order.payment.paidAt = intent.settledAt;
+      order.payment.confirmedAt = intent.settledAt;
+      order.payment.confirmedBy = 'momo-collection';
+      order.payment.confirmationNote = `${intent.provider} collected UGX ${intent.paidUgx.toLocaleString()} (auto-confirmed)`;
+      order.status = order.status === 'received' ? 'confirmed' : order.status;
+      intent.confirmedDeposit = true;
+      intent.autoConfirmed = true;
+      db_.save();
+      const release = await autoForwardOrder(order, { trigger: 'deposit' });
+      intent.release = release.skipped ? null : { plant: release.plant.name, delivery: release.delivery };
+    } else {
+      // Money arrived; the console decides what that means. This is the standing
+      // rule — suppliers are only contacted once the deposit is confirmed by the
+      // desk, not by a webhook.
+      order.payment.status = order.payment.status === 'deposit_paid' ? order.payment.status : 'processing';
+      order.payment.awaitingConfirmation = {
+        reason: 'wallet-collected',
+        amountUgx: intent.paidUgx,
+        dueUgx: due,
+        at: intent.settledAt,
+      };
+      db_.save();
+    }
+  } else if (result.status === 'FAILED') {
+    intent.status = 'failed';
+    intent.error = result.reason ?? 'The wallet declined the request.';
+  } else {
+    intent.status = 'pending';
+  }
+
+  db_.save();
+  return intent;
+}
+
+/**
+ * Ask for the deposit. Public, because the client is the one who must approve the
+ * prompt — but it will only ever ring the number already on the order, and only
+ * for the deposit that order is actually short of.
+ */
+api.post('/api/orders/:id/deposit/request', async (req, res) => {
+  const db = db_.data;
+  const order = db.orders.find((item) => item.id.toUpperCase() === String(req.params.id).toUpperCase());
+  if (!order) return res.status(404).json({ error: 'Order not found.' });
+
+  if (['deposit_paid', 'paid'].includes(order.payment?.status)) {
+    return res.status(409).json({ error: 'The deposit on this order is already recorded.', code: 'already_paid' });
+  }
+
+  const provider = text(req.body?.provider, 20) || order.payment?.method;
+  if (!['mtn_momo', 'airtel_money'].includes(provider)) {
+    return res.status(400).json({ error: 'Choose MTN MoMo or Airtel Money for an automatic prompt.' });
+  }
+  if (depositRateLimited(`${order.id}:${req.ip ?? 'unknown'}`)) {
+    return res.status(429).json({ error: 'Too many payment prompts for this order. Wait ten minutes or dial the merchant number.' });
+  }
+
+  // The prompt may only ring the wallet already on file, so this endpoint cannot
+  // be used to spam arbitrary numbers.
+  const requested = normaliseMsisdn(req.body?.payerPhone ?? order.payment?.payerPhone ?? order.client?.phone);
+  const onFile = normaliseMsisdn(order.payment?.payerPhone ?? order.client?.phone);
+  if (!requested) return res.status(400).json({ error: 'Enter the mobile money number to charge.' });
+  if (onFile && requested !== onFile) {
+    return res.status(403).json({
+      error: 'That number is not the one on this order. Message the desk on WhatsApp to change the paying wallet.',
+      code: 'payer_mismatch',
+    });
+  }
+
+  const due = depositUgxFor(order);
+  const result = await requestDeposit({
+    provider,
+    amountUgx: due,
+    payerPhone: requested,
+    orderId: order.id,
+    depositDueUgx: due,
+  });
+
+  if (result.status === 'unconfigured' || result.status === 'failed') {
+    const view = {
+      status: result.status,
+      provider,
+      error: result.error,
+      missing: result.missing ?? [],
+      // What to do instead — never a dead end.
+      manual: {
+        accountName: PAYMENT_METHODS.find((method) => method.id === provider)?.accountName ?? COMPANY.name,
+        merchantNumber: PAYMENT_METHODS.find((method) => method.id === provider)?.accountNumber ?? null,
+        reference: order.id,
+        amountUgx: due,
+      },
+    };
+    return res.status(result.status === 'unconfigured' ? 503 : 502).json(view);
+  }
+
+  const intent = {
+    id: newId('pay'),
+    provider,
+    status: 'pending',
+    referenceId: result.referenceId,
+    amountUgx: due,
+    amountUsd: depositUsd(order),
+    currency: result.currency ?? 'UGX',
+    feeUgx: walletFeeUgx(due),
+    payer: result.payer,
+    payerMasked: result.payerMasked ?? maskMsisdn(result.payer),
+    environment: result.environment ?? null,
+    requestedAt: result.requestedAt,
+    message: result.message,
+  };
+
+  order.payment.method = provider;
+  order.payment.payerPhone = result.payer;
+  order.payment.momo = order.payment.momo ?? {};
+  order.payment.intents = [intent, ...(order.payment.intents ?? [])].slice(0, 10);
+  if (order.payment.status === 'awaiting_deposit') order.payment.status = 'processing';
+  db_.save();
+
+  res.status(202).json({
+    intent: intentView(intent),
+    due: { amountUgx: due, amountUsd: depositUsd(order), feeUgx: walletFeeUgx(due) },
+    message: intent.message,
+  });
+});
+
+/** Poll the provider. The client's own page calls this while it waits. */
+api.get('/api/orders/:id/deposit/:intentId', async (req, res) => {
+  const db = db_.data;
+  const order = db.orders.find((item) => item.id.toUpperCase() === String(req.params.id).toUpperCase());
+  if (!order) return res.status(404).json({ error: 'Order not found.' });
+  const intent = (order.payment?.intents ?? []).find((item) => item.id === req.params.intentId);
+  if (!intent) return res.status(404).json({ error: 'Payment request not found.' });
+
+  if (intent.status === 'pending' || intent.status === 'unknown') {
+    const result = await checkDeposit(intent.provider, intent.referenceId);
+    if (result.status === 'unconfigured') {
+      return res.status(503).json({ intent: intentView(intent), error: unconfiguredPaymentMessage(intent.provider, result.missing) });
+    }
+    if (result.error) intent.error = result.error;
+    else await settleIntent(order, intent, result);
+  }
+
+  res.json({
+    intent: intentView(intent),
+    payment: { status: order.payment.status, confirmedBy: order.payment.confirmedBy ?? null },
+    // The client is told what happens next, not just a status word.
+    next:
+      intent.status === 'successful'
+        ? order.payment.status === 'deposit_paid'
+          ? 'Deposit recorded — your run is released for proofing.'
+          : 'Payment received. Management confirms it in the console, usually within the hour.'
+        : intent.status === 'failed'
+          ? 'That prompt was declined or expired. You can request another, or dial the merchant number.'
+          : 'Waiting for you to approve the prompt on your phone.',
+  });
+});
+
+/**
+ * Provider callback.
+ *
+ * MTN posts the outcome to X-Callback-Url. It cannot carry an admin token, so it
+ * carries a secret derived from the subscription key — the same pattern as the
+ * Telegram webhook. A bad secret is ignored with a 200 so a prober learns nothing
+ * and the provider stops retrying.
+ */
+api.post('/api/payments/momo/callback/:orderId', async (req, res) => {
+  const provider = String(req.body?.provider ?? 'mtn_momo');
+  const provided = req.headers['x-callback-secret'] ?? req.query.secret;
+  if (!verifyCallbackSecret(provider, provided)) return res.json({ ok: true });
+
+  const db = db_.data;
+  const order = db.orders.find((item) => item.id.toUpperCase() === String(req.params.orderId).toUpperCase());
+  if (!order) return res.json({ ok: true });
+
+  const reference = text(req.body?.referenceId ?? req.body?.financialTransactionId ?? req.body?.id, 80);
+  const intent =
+    (order.payment?.intents ?? []).find((item) => item.referenceId === reference) ??
+    (order.payment?.intents ?? [])[0];
+  if (!intent) return res.json({ ok: true });
+
+  const status = String(req.body?.status ?? '').toUpperCase();
+  await settleIntent(order, intent, {
+    status: status === 'SUCCESSFUL' ? 'SUCCESSFUL' : status === 'FAILED' ? 'FAILED' : 'PENDING',
+    amount: req.body?.amount ?? intent.amountUgx,
+    currency: req.body?.currency ?? 'UGX',
+    reason: req.body?.reason ?? null,
+    checkedAt: new Date().toISOString(),
+  });
+  res.json({ ok: true });
+});
+
+/** Which rails can take money — public, because the order form needs it. */
+api.get('/api/payments/rails', (_req, res) => {
+  res.json({ rails: paymentsHealth() });
 });
 
 api.get('/api/orders/:id', (req, res) => {
@@ -831,6 +1403,186 @@ api.post('/api/admin/orders/:id/forward', requireAdmin, async (req, res) => {
   res.json({ order: decorateOrder(updated), plant });
 });
 
+/**
+ * Console: ask for the deposit on the number already on file.
+ *
+ * Same code path as the client button — one implementation, one truth about what
+ * MTN or Airtel actually said.
+ */
+api.post('/api/admin/orders/:id/deposit/request', requireAdmin, async (req, res) => {
+  const db = db_.data;
+  const order = db.orders.find((item) => item.id === req.params.id);
+  if (!order) return res.status(404).json({ error: 'Order not found.' });
+  if (['deposit_paid', 'paid'].includes(order.payment?.status)) {
+    return res.status(409).json({ error: 'The deposit on this order is already recorded.', code: 'already_paid' });
+  }
+
+  const provider = text(req.body?.provider, 20) || order.payment?.method || 'mtn_momo';
+  if (!['mtn_momo', 'airtel_money'].includes(provider)) {
+    return res.status(400).json({ error: 'Choose MTN MoMo or Airtel Money.' });
+  }
+  const phone = normaliseMsisdn(text(req.body?.payerPhone, 30) || order.payment?.payerPhone || order.client?.phone);
+  if (!phone) return res.status(400).json({ error: 'That is not a usable mobile money number.' });
+
+  const due = depositUgxFor(order);
+  const result = await requestDeposit({
+    provider,
+    amountUgx: due,
+    payerPhone: phone,
+    orderId: order.id,
+    depositDueUgx: due,
+  });
+
+  if (result.status === 'unconfigured' || result.status === 'failed') {
+    return res.status(result.status === 'unconfigured' ? 503 : 502).json({
+      status: result.status,
+      error: result.error,
+      missing: result.missing ?? [],
+      manual: {
+        merchantNumber: PAYMENT_METHODS.find((method) => method.id === provider)?.accountNumber ?? null,
+        reference: order.id,
+        amountUgx: due,
+      },
+    });
+  }
+
+  const intent = {
+    id: newId('pay'),
+    provider,
+    status: 'pending',
+    referenceId: result.referenceId,
+    amountUgx: due,
+    amountUsd: depositUsd(order),
+    currency: result.currency ?? 'UGX',
+    feeUgx: walletFeeUgx(due),
+    payer: result.payer,
+    payerMasked: result.payerMasked ?? maskMsisdn(result.payer),
+    environment: result.environment ?? null,
+    requestedAt: result.requestedAt,
+    requestedBy: 'console',
+    message: result.message,
+  };
+  order.payment.method = provider;
+  order.payment.payerPhone = result.payer;
+  order.payment.intents = [intent, ...(order.payment.intents ?? [])].slice(0, 10);
+  db_.save();
+
+  res.status(202).json({ intent: intentView(intent), order: decorateOrder(order) });
+});
+
+/** Console: re-ask the provider what happened. */
+api.post('/api/admin/orders/:id/deposit/:intentId/refresh', requireAdmin, async (req, res) => {
+  const db = db_.data;
+  const order = db.orders.find((item) => item.id === req.params.id);
+  if (!order) return res.status(404).json({ error: 'Order not found.' });
+  const intent = (order.payment?.intents ?? []).find((item) => item.id === req.params.intentId);
+  if (!intent) return res.status(404).json({ error: 'Payment request not found.' });
+
+  const result = await checkDeposit(intent.provider, intent.referenceId);
+  if (result.status === 'unconfigured') {
+    return res.status(503).json({ error: unconfiguredPaymentMessage(intent.provider, result.missing), intent: intentView(intent) });
+  }
+  if (result.error) {
+    intent.error = result.error;
+    intent.checkedAt = new Date().toISOString();
+    db_.save();
+  } else {
+    await settleIntent(order, intent, result);
+  }
+
+  res.json({
+    intent: intentView(intent),
+    order: decorateOrder(db.orders.find((item) => item.id === order.id) ?? order),
+  });
+});
+
+/**
+ * Sweep every open wallet collection.
+ *
+ * A webhook can be lost, and a client will not always sit on the page waiting, so
+ * the desk asks the provider directly on a schedule. Same reasoning as the alert
+ * retry sweep: never rely on one delivery attempt.
+ */
+api.post('/api/admin/deposits/sweep', requireAdmin, async (_req, res) => {
+  const db = db_.data;
+  const open = [];
+  for (const order of db.orders) {
+    for (const intent of order.payment?.intents ?? []) {
+      if (intent.status === 'pending') open.push({ order, intent });
+    }
+  }
+
+  let settled = 0;
+  let failed = 0;
+  let pending = 0;
+  for (const { order, intent } of open.slice(0, 25)) {
+    const result = await checkDeposit(intent.provider, intent.referenceId);
+    if (result.status === 'unconfigured') break;
+    if (result.error) {
+      intent.error = result.error;
+      intent.checkedAt = new Date().toISOString();
+      db_.save();
+      continue;
+    }
+    await settleIntent(order, intent, result);
+    if (intent.status === 'successful') settled += 1;
+    else if (intent.status === 'failed') failed += 1;
+    else pending += 1;
+  }
+
+  res.json({ checked: open.length, settled, failed, pending });
+});
+
+/**
+ * Confirm a deposit the wallet already collected.
+ *
+ * Deliberately separate from recording a payment: this re-uses the existing
+ * confirmation path, so the amount must cover the 50% and the plant release goes
+ * through the same gate as a manual confirmation.
+ */
+api.post('/api/admin/orders/:id/deposit/confirm', requireAdmin, async (req, res) => {
+  const db = db_.data;
+  const order = db.orders.find((item) => item.id === req.params.id);
+  if (!order) return res.status(404).json({ error: 'Order not found.' });
+
+  const intent = (order.payment?.intents ?? []).find(
+    (item) => item.status === 'successful' && !item.confirmedDeposit,
+  );
+  if (!intent) {
+    return res.status(409).json({
+      error: 'No settled wallet payment is waiting on this order. Request a prompt, or record the deposit by hand.',
+      code: 'no_settled_payment',
+    });
+  }
+
+  const required = depositUsd(order);
+  const collectedUsd = Math.round((intent.paidUgx / ugxRate(order)) * 100) / 100;
+  if (collectedUsd + 0.005 < required) {
+    return res.status(409).json({
+      error: `The wallet collected ${collectedUsd.toFixed(2)} USD against a ${required.toFixed(2)} USD deposit — ${(required - collectedUsd).toFixed(2)} USD still short.`,
+      code: 'deposit_incomplete',
+      shortfallUsd: Math.round((required - collectedUsd) * 100) / 100,
+    });
+  }
+
+  order.payment.status = 'deposit_paid';
+  order.payment.depositPaidUsd = required;
+  order.payment.paidAt = intent.settledAt ?? new Date().toISOString();
+  order.payment.confirmedAt = new Date().toISOString();
+  order.payment.confirmedBy = 'console';
+  order.payment.confirmationNote = `${intent.provider} collected UGX ${intent.paidUgx.toLocaleString()}`;
+  order.status = order.status === 'received' ? 'confirmed' : order.status;
+  intent.confirmedDeposit = true;
+  db_.save();
+
+  const release = await autoForwardOrder(order, { trigger: 'deposit' });
+  res.json({
+    order: decorateOrder(db.orders.find((item) => item.id === order.id) ?? order),
+    intent: intentView(intent),
+    release: release.skipped ? release : { plant: release.plant.name, delivery: release.delivery },
+  });
+});
+
 api.post('/api/admin/orders/:id/payment', requireAdmin, async (req, res) => {
   const db = db_.data;
   const order = db.orders.find((item) => item.id === req.params.id);
@@ -905,6 +1657,17 @@ api.get('/api/admin/system', requireAdmin, async (_req, res) => {
       verification: channelVerification(),
       outbox,
       automaticRetry: Boolean(process.env.CRON_SECRET),
+    },
+    payments: {
+      rails: paymentsHealth(),
+      autoConfirm: String(process.env.MOMO_AUTO_CONFIRM ?? 'false').toLowerCase() === 'true',
+      currency: process.env.MOMO_CURRENCY ?? 'UGX',
+      walletFeePct: 0.5,
+    },
+    storage: {
+      ...(await storageStats()),
+      maxUploadMb: MAX_UPLOAD_MB,
+      chunkBytes: CHUNK_BYTES,
     },
     runtime: {
       node: process.version,
@@ -1021,7 +1784,31 @@ api.get('/api/cron/alerts', async (req, res) => {
   if (header !== `Bearer ${secret}`) return res.status(401).json({ error: 'Unauthorised' });
 
   const summary = await retryFailedAlerts({ limit: 20 });
-  res.json({ ok: true, at: new Date().toISOString(), summary });
+
+  // The daily pass also tidies the two things that otherwise grow forever:
+  // abandoned upload chunks, and wallet collections nobody polled.
+  const uploads = await reapAbandonedUploads().catch((error) => ({ error: error.message }));
+  let deposits = { checked: 0, settled: 0 };
+  try {
+    const db = db_.data;
+    const open = [];
+    for (const order of db.orders) {
+      for (const intent of order.payment?.intents ?? []) {
+        if (intent.status === 'pending') open.push({ order, intent });
+      }
+    }
+    for (const { order, intent } of open.slice(0, 25)) {
+      const result = await checkDeposit(intent.provider, intent.referenceId);
+      if (result.status === 'unconfigured') break;
+      if (!result.error) await settleIntent(order, intent, result);
+      deposits.checked += 1;
+      if (intent.status === 'successful') deposits.settled += 1;
+    }
+  } catch (error) {
+    deposits = { checked: 0, settled: 0, error: error.message };
+  }
+
+  res.json({ ok: true, at: new Date().toISOString(), summary, uploads, deposits });
 });
 
 /* ---------------------------- shop console ---------------------------- */

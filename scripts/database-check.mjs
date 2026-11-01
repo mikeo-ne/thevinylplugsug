@@ -134,6 +134,57 @@ async function testPostgres() {
     `${shopRowBefore.rows[0].updated_at} → ${untouched.rows[0].updated_at}`,
   );
 
+  // Upload chunks: the production path for master files. Same DDL and upserts
+  // the server runs, on the real engine.
+  await driver.query(`
+    create table if not exists upload_chunks (
+      upload_id text not null,
+      seq       integer not null,
+      bytes     bytea not null,
+      size      integer not null,
+      primary key (upload_id, seq)
+    )
+  `);
+  const chunkA = Buffer.from('RIFF-first-slice');
+  const chunkB = Buffer.from('second-slice');
+  await driver.query(
+    `insert into upload_chunks (upload_id, seq, bytes, size) values ($1, $2, $3, $4)
+     on conflict (upload_id, seq) do update set bytes = excluded.bytes, size = excluded.size`,
+    ['upl_chunked', 0, chunkA, chunkA.length],
+  );
+  // Re-uploading a slice must replace it, not duplicate it (the resume path).
+  await driver.query(
+    `insert into upload_chunks (upload_id, seq, bytes, size) values ($1, $2, $3, $4)
+     on conflict (upload_id, seq) do update set bytes = excluded.bytes, size = excluded.size`,
+    ['upl_chunked', 0, chunkA, chunkA.length],
+  );
+  await driver.query(
+    `insert into upload_chunks (upload_id, seq, bytes, size) values ($1, $2, $3, $4)
+     on conflict (upload_id, seq) do update set bytes = excluded.bytes, size = excluded.size`,
+    ['upl_chunked', 1, chunkB, chunkB.length],
+  );
+  const chunks = await driver.query(
+    'select seq, size, bytes from upload_chunks where upload_id = $1 order by seq',
+    ['upl_chunked'],
+  );
+  check('upload chunks land in Postgres', chunks.rows.length === 2, String(chunks.rows.length));
+  check('…in order', chunks.rows.map((row) => Number(row.seq)).join(',') === '0,1');
+  check(
+    '…byte for byte',
+    Buffer.from(chunks.rows[0].bytes).equals(chunkA) && Buffer.from(chunks.rows[1].bytes).equals(chunkB),
+  );
+  check(
+    '…and a resumed slice replaces rather than duplicates',
+    chunks.rows.length === 2 && Number(chunks.rows[0].size) === chunkA.length,
+  );
+  const totals = await driver.query(
+    'select count(distinct upload_id) as files, coalesce(sum(size), 0) as bytes from upload_chunks',
+  );
+  check('the store can report its size', Number(totals.rows[0].bytes) === chunkA.length + chunkB.length, String(totals.rows[0].bytes));
+  await driver.query('delete from upload_chunks where upload_id = $1', ['upl_chunked']);
+  const afterDelete = await driver.query('select 1 from upload_chunks where upload_id = $1', ['upl_chunked']);
+  check('deleting a file drops every chunk', afterDelete.rows.length === 0);
+
   // A deleted row really goes.
   const trimmed = structuredClone(next);
   trimmed.events = [];

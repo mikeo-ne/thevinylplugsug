@@ -10,12 +10,16 @@ export const SESSION_TTL = 8 * 60 * 60 * 1000; // 8 hours
 export const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 export const IS_SERVERLESS = Boolean(process.env.VERCEL);
 
-// Vercel caps serverless request bodies at 4.5MB, so the API advertises a lower
-// direct-upload limit there and clients fall back to WeTransfer/Drive links.
-export const MAX_UPLOAD_MB = Math.max(
-  1,
-  Number(process.env.MAX_UPLOAD_MB ?? (process.env.VERCEL ? 4 : 80)),
-);
+/**
+ * Per-file ceiling.
+ *
+ * Vercel caps a serverless request body at ~4.5MB, which is why 4MB was all a WAV
+ * could be. The browser now slices files into ~3MB chunks and uploads them one at
+ * a time (see server/uploads.js), so the ceiling is about storage and patience
+ * rather than the platform: a 24-bit master for a ten-track album is ~400MB.
+ * Raise it with MAX_UPLOAD_MB if you want more.
+ */
+export const MAX_UPLOAD_MB = Math.max(1, Number(process.env.MAX_UPLOAD_MB ?? 250));
 
 // Business contact details. Overridable per environment so a staging deploy can
 // point somewhere else, but the defaults are the real 7H desk.

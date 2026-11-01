@@ -453,8 +453,9 @@ export function OrderPage() {
                     We run a 24-hour technical check on every upload — sample rate, phase and print
                     bleed. Nothing is sent to the factory until you approve the proof.
                     <span className="mt-1.5 block text-muted/80">
-                      Direct uploads are capped at {config.limits?.maxUploadMb ?? 80}MB per file; for
-                      long masters, paste a WeTransfer or Drive link below.
+                      Masters up to {config.limits?.maxUploadMb ?? 250}MB per file upload straight from
+                      this page — they are sent in slices, so a long album survives a flaky connection.
+                      Prefer a link? Paste a WeTransfer or Drive URL below.
                     </span>
                   </div>
 
@@ -467,7 +468,7 @@ export function OrderPage() {
                     onLinkChange={(value) => setFiles({ audioLink: value })}
                     linkError={errors.audioLink}
                     error={errors.audio}
-                    maxMb={config.limits?.maxUploadMb ?? 80}
+                    maxMb={config.limits?.maxUploadMb ?? 250}
                   />
 
                   <div className="h-px bg-white/[0.07]" />
@@ -481,7 +482,7 @@ export function OrderPage() {
                     onLinkChange={(value) => setFiles({ artworkLink: value })}
                     linkError={errors.artworkLink}
                     error={errors.artwork}
-                    maxMb={config.limits?.maxUploadMb ?? 80}
+                    maxMb={config.limits?.maxUploadMb ?? 250}
                   />
 
                   {(files.audio.length > 0 || files.artwork.length > 0) && (

@@ -1,5 +1,6 @@
 import type {
   AdminOverview,
+  DepositIntent,
   AdminShop,
   AdminShopOrder,
   AlertTestResult,
@@ -82,12 +83,68 @@ export const clearAdminToken = () => {
 export const api = {
   config: () => request<CompanyConfig>('/api/config'),
 
+  /** Small files only — anything over a couple of MB goes through uploadOne(). */
   upload: async (files: { audio: File[]; artwork: File[] }) => {
     const form = new FormData();
     files.audio.forEach((file) => form.append('audio', file));
     files.artwork.forEach((file) => form.append('artwork', file));
     return request<{ uploads: UploadedFile[] }>('/api/uploads', { method: 'POST', body: form });
   },
+
+  /* ----------------------------- deposits ----------------------------- */
+
+  requestDeposit: (orderId: string, body: { provider?: string; payerPhone?: string }) =>
+    request<{ intent: DepositIntent; due?: { amountUgx: number; amountUsd: number; feeUgx: number }; message?: string }>(
+      `/api/orders/${encodeURIComponent(orderId)}/deposit/request`,
+      { method: 'POST', body: JSON.stringify(body) },
+    ),
+
+  depositStatus: (orderId: string, intentId: string) =>
+    request<{
+      intent: DepositIntent;
+      payment: { status: string; confirmedBy: string | null };
+      next: string;
+    }>(`/api/orders/${encodeURIComponent(orderId)}/deposit/${encodeURIComponent(intentId)}`),
+
+  adminRequestDeposit: (orderId: string, body: { provider?: string; payerPhone?: string }) =>
+    request<{ intent: DepositIntent; order: Order }>(
+      `/api/admin/orders/${encodeURIComponent(orderId)}/deposit/request`,
+      { method: 'POST', body: JSON.stringify(body) },
+    ),
+
+  adminRefreshDeposit: (orderId: string, intentId: string) =>
+    request<{ intent: DepositIntent; order: Order }>(
+      `/api/admin/orders/${encodeURIComponent(orderId)}/deposit/${encodeURIComponent(intentId)}/refresh`,
+      { method: 'POST' },
+    ),
+
+  adminConfirmWalletDeposit: (orderId: string) =>
+    request<{ order: Order; intent: DepositIntent; release?: unknown }>(
+      `/api/admin/orders/${encodeURIComponent(orderId)}/deposit/confirm`,
+      { method: 'POST' },
+    ),
+
+  adminSweepDeposits: () =>
+    request<{ checked: number; settled: number; failed: number; pending: number }>(
+      '/api/admin/deposits/sweep',
+      { method: 'POST' },
+    ),
+
+  /* ------------------------------ files ------------------------------ */
+
+  adminFiles: () =>
+    request<{
+      storage: { driver: string; label: string; durable: boolean; files: number; bytes: number };
+      limits: { maxUploadMb: number; chunkBytes: number };
+      files: UploadedFile[];
+      groups: { folder: string; files: UploadedFile[]; bytes: number }[];
+      counts: { files: number; complete: number; uploading: number; bytes: number };
+    }>('/api/admin/uploads'),
+
+  adminDeleteFile: (id: string) =>
+    request<{ ok: boolean; removed: string }>(`/api/admin/uploads/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    }),
 
   createOrder: (body: unknown) =>
     request<{ order: Order; quote: Order['quote'] }>('/api/orders', {
