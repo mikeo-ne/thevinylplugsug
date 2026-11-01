@@ -6,6 +6,8 @@ import type {
   AlertTestResult,
   RatesSnapshot,
   CompanyConfig,
+  LedgerRow,
+  LedgerTotals,
   Order,
   PlantMargin,
   PlantSheet,
@@ -164,6 +166,16 @@ export const api = {
     }),
 
   adminOverview: () => request<AdminOverview>('/api/admin/overview'),
+
+  payments: (query: { status?: string; kind?: string } = {}) => {
+    const params = new URLSearchParams();
+    if (query.status && query.status !== 'all') params.set('status', query.status);
+    if (query.kind && query.kind !== 'all') params.set('kind', query.kind);
+    const suffix = params.toString();
+    return request<{ rows: LedgerRow[]; totals: LedgerTotals; grandTotals: LedgerTotals }>(
+      `/api/admin/payments${suffix ? `?${suffix}` : ''}`,
+    );
+  },
 
   plantSheet: (id: string, plant: string) =>
     request<{ sheet: PlantSheet; margin: PlantMargin }>(

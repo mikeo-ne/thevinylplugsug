@@ -428,6 +428,40 @@ export interface PlantMargin {
   detail: string;
 }
 
+/**
+ * One movement of money, flattened from an order, a wallet intent or a shop sale.
+ * Derived at read time — there is no ledger table to drift out of step.
+ */
+export interface LedgerRow {
+  id: string;
+  kind: 'pressing' | 'shop';
+  orderId: string;
+  at: string;
+  client: string;
+  contact: string | null;
+  method: string;
+  methodName: string;
+  reference: string | null;
+  amountUsd: number;
+  amountUgx: number;
+  feeUgx: number;
+  status: 'collected' | 'collected_unconfirmed' | 'pending' | 'failed' | 'owed';
+  confirmed: boolean;
+  confirmedBy: string | null;
+  note: string | null;
+  depositUsd: number;
+  orderStatus: string;
+}
+
+export interface LedgerTotals {
+  collectedUsd: number;
+  thisMonthUsd: number;
+  awaitingUsd: number;
+  pendingUsd: number;
+  owedUsd: number;
+  counts: Record<string, number>;
+}
+
 export interface WebhookEvent {
   id: string;
   orderId: string;

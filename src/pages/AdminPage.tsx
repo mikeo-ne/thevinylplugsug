@@ -10,6 +10,7 @@ import { ShopPanel } from '../components/admin/ShopPanel';
 import { SystemPanel } from '../components/admin/SystemPanel';
 import { FilesPanel } from '../components/admin/FilesPanel';
 import { PlantDesk } from '../components/admin/PlantDesk';
+import { PaymentsPanel } from '../components/admin/PaymentsPanel';
 import { Logo } from '../components/ui/Logo';
 
 const channelIcon: Record<string, IconName> = {
@@ -803,6 +804,9 @@ export function AdminPage() {
             )}
           </section>
         </div>
+
+        {/* every deposit, prompt and sale, in one place */}
+        <PaymentsPanel />
 
         {/* where the data lives, and whether alerts actually leave */}
         <SystemPanel />

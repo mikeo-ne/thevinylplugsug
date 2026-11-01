@@ -78,6 +78,7 @@ import {
   verifyCallbackSecret,
   walletFeeUgx,
 } from './momo.js';
+import { buildLedger, filterLedger, ledgerCsv, ledgerTotals } from './ledger.js';
 import {
   PLANT_PROFILES,
   buildPlantSheet,
@@ -1477,6 +1478,35 @@ api.patch('/api/admin/orders/:id', requireAdmin, async (req, res) => {
  * The six plants, as the console needs them: what each one asks for, what it will
  * not accept, and where the numbers came from.
  */
+/**
+ * Every payment in one list: pressing deposits (wallet prompts, confirmed or not)
+ * and retail sales, newest first, with the totals the desk asks for.
+ */
+api.get('/api/admin/payments', requireAdmin, (req, res) => {
+  const all = buildLedger(db_.data);
+  const rows = filterLedger(all, {
+    status: req.query.status ? String(req.query.status) : undefined,
+    kind: req.query.kind ? String(req.query.kind) : undefined,
+    from: req.query.from ? String(req.query.from) : undefined,
+    to: req.query.to ? String(req.query.to) : undefined,
+  });
+  res.json({ rows, totals: ledgerTotals(rows), grandTotals: ledgerTotals(all) });
+});
+
+/** The same ledger as a CSV, for an accountant or a month-end. */
+api.get('/api/admin/payments.csv', requireAdmin, (req, res) => {
+  const all = buildLedger(db_.data);
+  const rows = filterLedger(all, {
+    status: req.query.status ? String(req.query.status) : undefined,
+    kind: req.query.kind ? String(req.query.kind) : undefined,
+  });
+  const stamp = new Date().toISOString().slice(0, 10);
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="7h-payments-${stamp}.csv"`);
+  res.send(ledgerCsv(rows));
+});
+
 api.get('/api/admin/plants', requireAdmin, (_req, res) => {
   res.json({
     plants: PRESSING_PLANTS.map((plant) => {

@@ -361,6 +361,26 @@ record just sold out.
 The console's **System** panel says which driver is live, whether it survives a deploy, and how many
 rows it holds — and `GET /api/health` reports the same thing publicly (no secrets) for uptime checks.
 
+### The payments ledger
+
+Point 1c of the brief — *"find a way of organising these orders and payments made"*. Until now
+the money was legible one order at a time: deposit intents inside an order, a hand-recorded
+deposit on `payment`, retail sales in the shop panel. Nothing answered "what came in this week,
+and who do I chase".
+
+- **`GET /api/admin/payments`** returns every movement of money newest-first — wallet prompts,
+  confirmed deposits, hand-recorded bank/SWIFT payments and retail sales — with filters
+  (`status`, `kind`, `from`, `to`) and the totals the desk asks for: collected, this month,
+  awaiting confirmation, in flight, owed.
+- **`GET /api/admin/payments.csv`** is the same list as a spreadsheet, RFC-4180 quoted, because an
+  accountant wants a file, not a screenshot.
+- **Five states, not two.** `collected` (money in and confirmed), `collected_unconfirmed` (a wallet
+  says it took the money; nobody has confirmed), `pending` (prompt out, no answer), `failed`
+  (declined/expired) and `owed` (nothing paid, nothing in flight). Only `collected` counts as
+  revenue, and `owed` is what makes the ledger double as a debtors list.
+- **Derived, never stored.** There is no ledger table: it is built from the orders on every read, so
+  it cannot drift away from what the order pages say.
+
 ### The plant desk: six intake forms, one sheet
 
 Points 5 and 6 of the 1 November brief, answered together because they are the same
@@ -496,6 +516,7 @@ npm run test:alerts       # every alert channel against a local sink, incl. retr
 npm run test:payments     # wallet rails + chunked uploads, against a local sink
 npm run test:invoice      # numbering, all-in page, WhatsApp hand-off, no margin leak
 npm run test:plants       # per-plant sheets, published minimums, loss guard, TIN
+npm run test:ledger       # payment states, totals, filters, CSV
 node scripts/smoke.mjs    # needs the app running on :4173
 node scripts/flow.mjs
 ```
@@ -521,6 +542,7 @@ npx vercel --prod
 - [ ] In the console, pick a plant in **Plant desk**: the sheet fills itself in, and anything that
       plant will block on is named.
 - [ ] Recording a plant cost above the client's price turns the order red and refuses the forward.
+- [ ] The **Payments** panel lists every deposit with a state, and its CSV opens in a spreadsheet.
 - [ ] `/admin` accepts your new `ADMIN_PASSCODE`, shows the order, and the webhook log resolves.
 - [ ] "Forward" produces the plant payload and flips the order to **Sent to plant**.
 - [ ] Custom domain added (Vercel → Domains) and `ADMIN_PASSCODE` rotated away from the demo value.
