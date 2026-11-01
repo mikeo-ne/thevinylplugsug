@@ -167,6 +167,19 @@ export function postgresDriver({ url, client: injectedClient, variable = 'DATABA
 
     variable,
 
+    /**
+     * Raw SQL access for things that are not whole documents.
+     *
+     * Uploaded file chunks are the first case: a 300 MB WAV cannot ride along in
+     * a jsonb document, and streaming it back one row at a time beats buffering
+     * it. Exposed as a function so the caller cannot mistake this for the
+     * document API and start writing ad-hoc updates to orders.
+     */
+    async query(sql, params) {
+      await this.init();
+      return q(sql, params);
+    },
+
     async init() {
       if (ready) return ready;
       ready = (async () => {

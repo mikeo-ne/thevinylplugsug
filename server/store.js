@@ -312,6 +312,19 @@ export async function refreshStore({ force = false, canReload = true } = {}) {
   }
 }
 
+/**
+ * A raw SQL handle when — and only when — the document store is PostgreSQL.
+ *
+ * Callers that get `null` must fall back to something else rather than assume a
+ * database is there; `server/uploads.js` uses this to decide between chunk rows
+ * and disk.
+ */
+export async function postgresQuery() {
+  if (driver.name !== 'postgres' || typeof driver.query !== 'function') return null;
+  await storeReady();
+  return (sql, params) => driver.query(sql, params);
+}
+
 export const db_ = {
   get data() {
     return load();

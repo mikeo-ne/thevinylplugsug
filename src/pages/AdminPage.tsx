@@ -8,6 +8,7 @@ import { Icon, type IconName } from '../components/ui/Icon';
 import { StatusPill } from '../components/ui/StatusPill';
 import { ShopPanel } from '../components/admin/ShopPanel';
 import { SystemPanel } from '../components/admin/SystemPanel';
+import { FilesPanel } from '../components/admin/FilesPanel';
 import { Logo } from '../components/ui/Logo';
 
 const channelIcon: Record<string, IconName> = {
@@ -116,6 +117,38 @@ export function AdminPage() {
     runAction(`deposit-${order.id}`, async () => {
       await api.adminMarkDeposit(order.id, order.quote.deposit);
       notify(`Deposit marked paid for ${order.id}.`, 'success');
+      await loadOverview(true);
+    });
+
+  const requestDepositPrompt = (order: Order) =>
+    runAction(`prompt-${order.id}`, async () => {
+      const result = await api.adminRequestDeposit(order.id, {
+        provider: order.payment.method === 'airtel_money' ? 'airtel_money' : 'mtn_momo',
+        payerPhone: order.payment.payerPhone ?? order.client.phone,
+      });
+      notify(
+        `Prompt sent to ${result.intent.payerMasked ?? 'the wallet'} — UGX ${result.intent.amountUgx.toLocaleString('en-US')}.`,
+        'success',
+      );
+      await loadOverview(true);
+    });
+
+  const refreshDeposit = (order: Order, intentId: string) =>
+    runAction(`refresh-${intentId}`, async () => {
+      const result = await api.adminRefreshDeposit(order.id, intentId);
+      notify(
+        result.intent.status === 'successful'
+          ? 'The wallet collected the deposit — confirm it to release the plant.'
+          : `Wallet status: ${result.intent.status}.`,
+        result.intent.status === 'successful' ? 'success' : 'error',
+      );
+      await loadOverview(true);
+    });
+
+  const confirmWalletDeposit = (order: Order) =>
+    runAction(`confirm-wallet-${order.id}`, async () => {
+      await api.adminConfirmWalletDeposit(order.id);
+      notify(`Deposit confirmed from the wallet — ${order.id} released for proofing.`, 'success');
       await loadOverview(true);
     });
 
@@ -520,6 +553,113 @@ export function AdminPage() {
                   </Panel>
                 </div>
 
+                {/* mobile money collection */}
+                <div className="border-t border-white/[0.07] px-5 py-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted">
+                      Mobile money
+                    </span>
+                    <span className="text-[9.5px] text-muted">
+                      {(overview as AdminOverview & { payments?: { autoConfirm: boolean } })?.payments?.autoConfirm
+                        ? 'auto-confirm on'
+                        : 'desk confirms the money'}
+                    </span>
+                  </div>
+
+                  {(() => {
+                    const intents = selected.payment.intents ?? [];
+                    const settleable = intents.find(
+                      (intent) => intent.status === 'successful' && !intent.confirmedDeposit,
+                    );
+                    return (
+                      <div className="mt-2 space-y-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => requestDepositPrompt(selected)}
+                            disabled={
+                              busy === `prompt-${selected.id}` ||
+                              depositCleared(selected) ||
+                              selected.payment.method === 'card_bank'
+                            }
+                            className="flex items-center gap-1.5 rounded-full border border-lime/40 bg-lime/[0.08] px-3 py-1.5 text-[10.5px] font-semibold uppercase tracking-[0.1em] text-lime disabled:opacity-40"
+                            title="Send a payment request to the wallet on this order"
+                          >
+                            <Icon name={busy === `prompt-${selected.id}` ? 'spinner' : 'send'} size={11} className={busy === `prompt-${selected.id}` ? 'animate-spin' : ''} />
+                            Request payment prompt
+                          </button>
+
+                          {settleable && (
+                            <button
+                              type="button"
+                              onClick={() => confirmWalletDeposit(selected)}
+                              disabled={busy === `confirm-wallet-${selected.id}`}
+                              className="flex items-center gap-1.5 rounded-full bg-lime px-3 py-1.5 text-[10.5px] font-semibold uppercase tracking-[0.1em] text-ink disabled:opacity-40"
+                            >
+                              <Icon name="check-circle" size={11} />
+                              Confirm collected deposit
+                            </button>
+                          )}
+
+                          <span className="font-mono text-[10px] text-muted">
+                            {selected.payment.payerPhone ?? selected.client.phone}
+                          </span>
+                        </div>
+
+                        {intents.length > 0 ? (
+                          <ul className="space-y-1">
+                            {intents.slice(0, 3).map((intent) => (
+                              <li
+                                key={intent.id}
+                                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/[0.07] bg-black/20 px-3 py-1.5"
+                              >
+                                <span className="flex min-w-0 items-center gap-2">
+                                  <span
+                                    className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                                      intent.status === 'successful'
+                                        ? 'bg-lime'
+                                        : intent.status === 'failed'
+                                          ? 'bg-red-400'
+                                          : 'bg-amber-300'
+                                    }`}
+                                  />
+                                  <span className="truncate text-[10.5px] text-bone/85">
+                                    UGX {intent.amountUgx.toLocaleString('en-US')} · {intent.payerMasked ?? 'wallet'}
+                                  </span>
+                                  <span className="text-[9.5px] uppercase tracking-[0.1em] text-muted">
+                                    {intent.status}
+                                  </span>
+                                  {intent.confirmedDeposit && (
+                                    <span className="text-[9px] uppercase tracking-[0.1em] text-lime/70">recorded</span>
+                                  )}
+                                </span>
+                                <span className="flex shrink-0 items-center gap-2">
+                                  <span className="text-[9.5px] text-muted">{relativeTime(intent.requestedAt)}</span>
+                                  {intent.status === 'pending' && (
+                                    <button
+                                      type="button"
+                                      onClick={() => refreshDeposit(selected, intent.id)}
+                                      disabled={busy === `refresh-${intent.id}`}
+                                      className="text-[9.5px] uppercase tracking-[0.1em] text-muted hover:text-bone disabled:opacity-40"
+                                    >
+                                      {busy === `refresh-${intent.id}` ? 'checking…' : 'refresh'}
+                                    </button>
+                                  )}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="text-[10.5px] leading-relaxed text-muted">
+                            No wallet request yet. The prompt rings the number on the order — MTN or Airtel
+                            credentials decide whether it can be sent at all.
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
+
                 {/* actions */}
                 <div className="border-t border-white/[0.07] bg-black/20 px-5 py-4">
                   <div className="flex flex-wrap items-center gap-2">
@@ -642,6 +782,8 @@ export function AdminPage() {
 
         {/* where the data lives, and whether alerts actually leave */}
         <SystemPanel />
+
+        <FilesPanel />
 
         {/* the retail shelf — a separate business from the pressing pipeline */}
         <ShopPanel />

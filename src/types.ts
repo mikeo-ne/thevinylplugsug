@@ -131,9 +131,11 @@ export interface CompanyConfig {
   sleeves: SleeveOption[];
   paymentMethods: PaymentMethod[];
   plants: Plant[];
+  paymentRails?: { provider: string; ready: boolean; environment?: string }[];
   limits?: {
     maxUploadMb: number;
     maxFiles: number;
+    chunkBytes?: number;
     audio: string[];
     artwork: string[];
   };
@@ -142,13 +144,55 @@ export interface CompanyConfig {
 export interface UploadedFile {
   id: string;
   originalName: string;
-  storedName: string;
+  storedName?: string;
   mimeType: string;
   size: number;
   kind: 'audio' | 'artwork';
-  url: string;
+  url: string | null;
   createdAt: string;
   demo?: boolean;
+  /** Where the bytes live: `postgres` survives a redeploy, `file` does not. */
+  storage?: 'postgres' | 'file' | 'legacy-disk' | string;
+  storageLabel?: string;
+  /** Filed by order: `orders/7H-2026-8K2Q/audio`, or a dated inbox folder. */
+  folder?: string;
+  orderId?: string | null;
+  status?: 'uploading' | 'complete';
+  sha256?: string;
+  chunks?: number;
+  chunkBytes?: number;
+  bytes?: number;
+  completedAt?: string;
+  downloadUrl?: string;
+  linkedOrder?: string | null;
+}
+
+/** One wallet collection attempt against an order's deposit. */
+export interface DepositIntent {
+  id: string;
+  provider: 'mtn_momo' | 'airtel_money' | string;
+  status: 'pending' | 'successful' | 'failed' | string;
+  amountUgx: number;
+  amountUsd?: number;
+  paidUgx?: number | null;
+  feeUgx?: number | null;
+  reference?: string;
+  payerMasked?: string;
+  requestedAt: string;
+  checkedAt?: string | null;
+  settledAt?: string | null;
+  error?: string | null;
+  message?: string | null;
+  confirmedDeposit?: boolean;
+}
+
+/** What a payment rail can and cannot do right now. */
+export interface PaymentRail {
+  provider: string;
+  label?: string;
+  ready: boolean;
+  environment?: string;
+  missing: string[];
 }
 
 export interface DraftConfiguration {
@@ -203,6 +247,21 @@ export interface Order {
     reference?: string | null;
     paidAt?: string;
     depositPaidUsd?: number;
+    confirmedAt?: string;
+    confirmedBy?: string;
+    confirmationNote?: string;
+    /** Every wallet collection attempt, newest first. */
+    intents?: DepositIntent[];
+    /** What the wallet actually collected, regardless of who confirmed it. */
+    collected?: {
+      provider: string;
+      intentId: string;
+      currency: string;
+      amount: number;
+      amountUsd: number;
+      at: string;
+    };
+    awaitingConfirmation?: { reason: string; amountUgx: number; dueUgx: number; at: string };
   };
   files: DraftFiles;
   plantPreference?: string;
