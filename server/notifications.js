@@ -1494,13 +1494,18 @@ export async function sendTestAlert(channel) {
     }
 
     if (channel === 'plant') {
-      // The plant hand-off is the one alert that must never be tested silently:
-      // the console sends it to the plant's real order inbox.
+      // The plant hand-off is the one alert that must never be tested: the
+      // console sends it straight to a real pressing plant's order inbox, and a
+      // test order there is a real order they will quote and press. Prove this
+      // rail with the first genuine forward instead.
       return {
         channel,
         status: 'unconfigured',
         mode: 'simulated',
-        error: `Set ${check?.missing.join(', ') || 'a plant order address'}`,
+        error: check?.missing.length
+          ? unconfiguredMessage('plant', check.missing)
+          : 'The plant rail is never test-fired — a test would land in a real plant inbox as an order. It is proven by the first real hand-off.',
+        missing: check?.missing ?? [],
         attemptedAt: stamp,
       };
     }

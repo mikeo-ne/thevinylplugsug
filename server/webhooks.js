@@ -266,9 +266,15 @@ export function channelVerification({ channels = null } = {}) {
       status = 'unconfigured';
       detail = unconfiguredMessage(entry.channel, entry.missing);
     } else if (!current) {
-      detail = rotated
-        ? 'Credentials changed since the last successful send — test again to prove it.'
-        : 'Nothing has gone out yet — send a test alert to prove it works.';
+      // The plant rail has no safe test: proving it would mean emailing a real
+      // pressing plant about a fictitious order. It is proven by the first real
+      // hand-off instead.
+      detail =
+        entry.channel === 'plant'
+          ? 'Proven by the first order forwarded to a plant — there is no safe way to send a plant a test order.'
+          : rotated
+            ? 'Credentials changed since the last successful send — test again to prove it.'
+            : 'Nothing has gone out yet — send a test alert to prove it works.';
     } else if (current.status === 'delivered') {
       status = 'proven';
       detail = `Proven${current.httpStatus ? ` (HTTP ${current.httpStatus})` : ''} — a provider accepted a message with these credentials.`;

@@ -265,6 +265,24 @@ check('an entirely unset channel has no fingerprint', alertChannelFingerprint('w
 const stampable = stampAlertProof({ channel: 'slack', status: 'delivered' });
 check('a recorded attempt carries the fingerprint it used', stampable.credentials === slackPrint, String(stampable.credentials));
 
+// The plant rail is the one channel that cannot be test-fired.
+const savedPlantOrders = process.env.PLANT_ORDERS_EMAIL;
+process.env.PLANT_ORDERS_EMAIL = 'orders@plant.test';
+const plantReady = channelVerification().find((entry) => entry.channel === 'plant');
+check('the plant rail can be configured', plantReady.ready === true, plantReady.detail);
+check(
+  '…but is never claimed as proven before a real hand-off',
+  plantReady.status === 'untested' && /first order forwarded/.test(plantReady.detail ?? ''),
+  plantReady.detail,
+);
+const plantTest = await sendTestAlert('plant');
+check(
+  'asking for a plant test is refused with a reason, not a fake green tick',
+  plantTest.status === 'unconfigured' && /real plant inbox/.test(plantTest.error ?? ''),
+  plantTest.error,
+);
+process.env.PLANT_ORDERS_EMAIL = savedPlantOrders;
+
 const atBoot = channelVerification();
 check('a configured channel with no attempts is not proven', atBoot.find((entry) => entry.channel === 'slack')?.status === 'untested', JSON.stringify(atBoot.find((entry) => entry.channel === 'slack')));
 check('…and says how to prove it', /test/i.test(atBoot.find((entry) => entry.channel === 'slack')?.detail ?? ''), atBoot.find((entry) => entry.channel === 'slack')?.detail);
