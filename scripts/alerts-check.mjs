@@ -668,17 +668,79 @@ check(
 );
 db_.data.events = db_.data.events.filter((event) => event.id !== 'evt_conf_failed');
 
+// A recorded test has no order behind it. It used to be skipped as "order not
+// found", which left red rows that could never clear.
+db_.data.events.unshift({
+  id: 'evt_stale_test',
+  orderId: null,
+  channel: 'slack',
+  mode: 'live',
+  target: 'operations console',
+  message: 'Manual test alert — failed',
+  status: 'failed',
+  attempts: 1,
+  error: 'SLACK_WEBHOOK_URL is not set',
+  createdAt: new Date(Date.now() - 259_200_000).toISOString(),
+  lastAttemptAt: new Date(Date.now() - 259_200_000).toISOString(),
+  payload: { test: true },
+});
+const slackDeliveries = received.slack.length;
+const testRetry = await retryFailedAlerts({ minAgeMs: 0, limit: 20 });
+check(
+  'a failed test alert is retried, not skipped as “order not found”',
+  testRetry.results.some((entry) => entry.id === 'evt_stale_test' && entry.status === 'delivered'),
+  JSON.stringify(testRetry.results.filter((entry) => entry.id === 'evt_stale_test')),
+);
+check('…by actually sending the test again', received.slack.length === slackDeliveries + 1);
+check(
+  '…so the red row clears',
+  db_.data.events.find((event) => event.id === 'evt_stale_test')?.status === 'delivered',
+  db_.data.events.find((event) => event.id === 'evt_stale_test')?.status,
+);
+
+// A test on a channel that is still unconfigured stays honest.
+db_.data.events.unshift({
+  id: 'evt_test_unset',
+  orderId: null,
+  channel: 'webhook',
+  mode: 'live',
+  status: 'failed',
+  attempts: 1,
+  error: 'NOTIFY_WEBHOOK_URL is not set',
+  createdAt: new Date().toISOString(),
+  lastAttemptAt: new Date().toISOString(),
+  payload: { test: true },
+});
+const savedNotifyWebhook = process.env.NOTIFY_WEBHOOK_URL;
+delete process.env.NOTIFY_WEBHOOK_URL;
+const unsetRetry = await retryFailedAlerts({ minAgeMs: 0, limit: 20 });
+check(
+  'a test on an unconfigured channel is not attempted',
+  !unsetRetry.results.some((entry) => entry.id === 'evt_test_unset' && entry.status === 'delivered'),
+  JSON.stringify(unsetRetry.results.filter((entry) => entry.id === 'evt_test_unset')),
+);
+process.env.NOTIFY_WEBHOOK_URL = savedNotifyWebhook;
+
 const railRows = notificationChannels();
 check(
   'the alert log header reads the same verification as the System panel',
   railRows.every((row) => 'status' in row && 'verified' in row),
   JSON.stringify(railRows[0]),
 );
+const verificationNow = channelVerification();
 check(
-  'a configured but untested channel is not painted as proven in the header',
-  railRows.find((row) => row.channel === 'slack')?.status === 'untested' &&
-    railRows.find((row) => row.channel === 'slack')?.verified === false,
-  JSON.stringify(railRows.find((row) => row.channel === 'slack')),
+  'every header row repeats the System panel verdict exactly',
+  railRows.every((row) => {
+    const proof = verificationNow.find((entry) => entry.channel === row.channel);
+    return proof && row.status === proof.status && row.verified === proof.verified && row.proofAt === proof.proofAt;
+  }),
+  JSON.stringify(
+    railRows.map((row) => [
+      row.channel,
+      row.status,
+      verificationNow.find((entry) => entry.channel === row.channel)?.status,
+    ]),
+  ),
 );
 const savedWhatsAppToken = process.env.WHATSAPP_TOKEN;
 delete process.env.WHATSAPP_TOKEN;
@@ -739,8 +801,15 @@ const blockedTest = await fetch(`${BASE}/api/admin/alerts/test`, {
 });
 check('a test cannot be fired without an admin session', blockedTest.status === 401, String(blockedTest.status));
 
+// A rotation is the cleanest way to get back to "configured but not proven".
+const urlBeforeConsoleTest = process.env.SLACK_WEBHOOK_URL;
+process.env.SLACK_WEBHOOK_URL = `${SINK}/slack-console`;
 const slackBefore = channelVerification().find((entry) => entry.channel === 'slack');
-check('slack starts this console session unproven', slackBefore.status === 'untested', JSON.stringify(slackBefore));
+check(
+  'a freshly rotated credential starts unproven',
+  slackBefore.status === 'untested' && slackBefore.rotated === true,
+  JSON.stringify(slackBefore),
+);
 
 const oneTest = await fetch(`${BASE}/api/admin/alerts/test`, {
   method: 'POST',

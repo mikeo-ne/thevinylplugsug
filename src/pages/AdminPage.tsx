@@ -742,8 +742,12 @@ export function AdminPage() {
                       )}
                     </div>
                     <p className="mt-0.5 text-[11.5px] leading-snug text-bone/80">{event.message}</p>
-                    {event.status === 'failed' && event.error && (
-                      <p className="mt-1 flex items-start gap-1.5 text-[10.5px] leading-snug text-red-300">
+                    {event.error && (event.status === 'failed' || event.status === 'unconfigured') && (
+                      <p
+                        className={`mt-1 flex items-start gap-1.5 text-[10.5px] leading-snug ${
+                          event.status === 'failed' ? 'text-red-300' : 'text-amber-200/80'
+                        }`}
+                      >
                         <Icon name="alert" size={11} className="mt-0.5 shrink-0" />
                         {event.error}
                       </p>
@@ -767,7 +771,7 @@ export function AdminPage() {
                       </div>
                       <div className="text-[9.5px] text-muted">{relativeTime(event.createdAt)}</div>
                     </div>
-                    {(pending || event.status === 'failed') && (
+                    {event.status !== 'unconfigured' && (pending || event.status === 'failed') && (
                       <button
                         type="button"
                         onClick={() => retryEvent(event)}
@@ -790,7 +794,13 @@ export function AdminPage() {
           </ul>
         </section>
 
-        <p className="mt-4 flex items-start gap-2 text-[10.5px] leading-relaxed text-muted">
+        <p className="mt-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-[9.5px] uppercase tracking-[0.12em] text-muted/60">
+          <span>console build {__BUILD_STAMP__}</span>
+          <span aria-hidden>·</span>
+          <span>if this looks out of date, hard-reload (⌘⇧R)</span>
+        </p>
+
+        <p className="mt-2 flex items-start gap-2 text-[10.5px] leading-relaxed text-muted">
           <Icon name="lock" size={11} className="mt-0.5 shrink-0 text-lime/60" />
           {overview?.notifications?.configured ? (
             <span>
