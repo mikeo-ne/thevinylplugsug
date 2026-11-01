@@ -2,6 +2,7 @@ import { db_, newId } from './store.js';
 import { COMPANY, PAYMENT_METHODS } from './config.js';
 import { describeConfiguration, PRESSING_PLANTS } from '../shared/pricing.js';
 import {
+  alertChannelFingerprint,
   alertEnvCheck,
   attachPlantPayloadFormatter,
   channelMode,
@@ -208,7 +209,14 @@ function makeEvent({ orderId, channel, target, message, status = 'pending', payl
   };
 }
 
-/** Merge a real delivery result onto a stored event. */
+/**
+ * Merge a real delivery result onto a stored event.
+ *
+ * The `credentials` hash is the point of interest: it records *which* credentials
+ * made this attempt, so a later rotation invalidates the proof instead of leaving
+ * a green tick on a rail nobody has retested. Simulated deliveries never reach
+ * this function, so they can never look like a proof.
+ */
 function applyDelivery(eventId, result) {
   const db = db_.data;
   const event = db.events.find((item) => item.id === eventId);
@@ -220,8 +228,82 @@ function applyDelivery(eventId, result) {
   event.attempts = (event.attempts ?? 0) + 1;
   event.error = result.error ?? null;
   event.lastAttemptAt = new Date().toISOString();
+  event.credentials = alertChannelFingerprint(event.channel) ?? event.credentials ?? null;
   if (result.status === 'delivered') event.deliveredAt = result.deliveredAt ?? new Date().toISOString();
   db_.save();
+  return event;
+}
+
+/**
+ * What the console can actually claim about each channel.
+ *
+ * Three different things used to share one green dot: "the variables are set",
+ * "someone tested it months ago", and "it works right now". Readiness is the
+ * environment; proof is a real provider answer stamped with a credential hash.
+ * `proven` therefore means: a provider accepted a message, with the same
+ * credentials this process is holding, and nothing has failed since.
+ */
+export function channelVerification({ channels = null } = {}) {
+  const env = alertEnvCheck().filter((entry) => !channels || channels.includes(entry.channel));
+  const events = db_.data.events ?? [];
+
+  return env.map((entry) => {
+    const fingerprint = alertChannelFingerprint(entry.channel);
+    // Only real attempts carry a hash; simulated ones are ignored by design.
+    const attempts = events
+      .filter((event) => event.channel === entry.channel && event.credentials)
+      .sort(
+        (a, b) =>
+          new Date(b.lastAttemptAt ?? b.createdAt).getTime() -
+          new Date(a.lastAttemptAt ?? a.createdAt).getTime(),
+      );
+    const current = fingerprint ? (attempts.find((event) => event.credentials === fingerprint) ?? null) : null;
+    const rotated = Boolean(fingerprint && !current && attempts.length > 0);
+
+    let status = 'untested';
+    let detail;
+    if (!entry.ready || !fingerprint) {
+      status = 'unconfigured';
+      detail = unconfiguredMessage(entry.channel, entry.missing);
+    } else if (!current) {
+      detail = rotated
+        ? 'Credentials changed since the last successful send — test again to prove it.'
+        : 'Nothing has gone out yet — send a test alert to prove it works.';
+    } else if (current.status === 'delivered') {
+      status = 'proven';
+      detail = `Proven${current.httpStatus ? ` (HTTP ${current.httpStatus})` : ''} — a provider accepted a message with these credentials.`;
+    } else if (current.status === 'failed') {
+      status = 'degraded';
+      detail = `The last attempt failed — ${current.error ?? 'no error text'}`;
+    } else {
+      detail = 'An attempt is in flight — the result will land here.';
+    }
+
+    return {
+      channel: entry.channel,
+      ready: entry.ready,
+      verified: status === 'proven',
+      status,
+      fingerprint,
+      proofAt: current?.deliveredAt ?? (current?.status === 'delivered' ? current?.lastAttemptAt : null) ?? null,
+      lastAttemptAt: current?.lastAttemptAt ?? null,
+      lastError: current?.status === 'failed' ? (current.error ?? 'Unknown error') : null,
+      target: current?.target ?? null,
+      rotated,
+      missing: entry.missing,
+      detail,
+    };
+  });
+}
+
+/**
+ * Record a real test send against the channel, so the console can tell "I tested
+ * this" from "I set a variable once". Used by the admin test-alert route, which
+ * keeps its own event row for the same purpose.
+ */
+export function stampAlertProof(event) {
+  if (!event?.channel) return event;
+  event.credentials = alertChannelFingerprint(event.channel) ?? null;
   return event;
 }
 

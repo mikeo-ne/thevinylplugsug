@@ -195,6 +195,7 @@ process.env.CRON_SECRET = 'cron_test_secret';
 process.env.PUBLIC_BASE_URL = 'https://7h.test';
 
 const {
+  alertChannelFingerprint,
   alertEnvCheck,
   buildTelegramReply,
   channelStatus,
@@ -208,7 +209,9 @@ const {
   telegramWebhookSecretForTests,
 } = await import('../server/notifications.js');
 const { db_, storeReady } = await import('../server/store.js');
-const { retryFailedAlerts, alertOutboxSummary } = await import('../server/webhooks.js');
+const { retryFailedAlerts, alertOutboxSummary, channelVerification, stampAlertProof } = await import(
+  '../server/webhooks.js'
+);
 
 /* ------------------------------------------------------------------ *
  * Which variables are missing
@@ -235,6 +238,39 @@ check(
 check('…and says which variable to set', /RESEND_API_KEY/.test(unconfigured.error ?? ''), unconfigured.error);
 check('…and lists it', unconfigured.missing?.includes('RESEND_API_KEY'), JSON.stringify(unconfigured.missing));
 process.env.RESEND_API_KEY = savedKey;
+
+/* ------------------------------------------------------------------ *
+ * Ready is not the same as proven
+ * ------------------------------------------------------------------ */
+
+console.log('\n▸ Ready is not the same as proven');
+await storeReady();
+// A fingerprint identifies the credentials in use, so a proof can expire when a
+// key is rotated instead of leaving a green tick over a dead webhook.
+const slackPrint = alertChannelFingerprint('slack');
+check('a configured channel has a credential fingerprint', typeof slackPrint === 'string' && slackPrint.length === 16, String(slackPrint));
+check('…that is stable while nothing changes', alertChannelFingerprint('slack') === slackPrint);
+check('…and never contains the secret itself', !String(slackPrint).includes('127.0.0.1') && !String(slackPrint).includes('hooks'));
+const rotatedSlack = process.env.SLACK_WEBHOOK_URL;
+process.env.SLACK_WEBHOOK_URL = `${SINK}/slack-rotated`;
+check('rotating a credential changes the fingerprint', alertChannelFingerprint('slack') !== slackPrint);
+process.env.SLACK_WEBHOOK_URL = rotatedSlack;
+check('an entirely unset channel has no fingerprint', alertChannelFingerprint('webhook') !== null);
+
+const stampable = stampAlertProof({ channel: 'slack', status: 'delivered' });
+check('a recorded attempt carries the fingerprint it used', stampable.credentials === slackPrint, String(stampable.credentials));
+
+const atBoot = channelVerification();
+check('a configured channel with no attempts is not proven', atBoot.find((entry) => entry.channel === 'slack')?.status === 'untested', JSON.stringify(atBoot.find((entry) => entry.channel === 'slack')));
+check('…and says how to prove it', /test/i.test(atBoot.find((entry) => entry.channel === 'slack')?.detail ?? ''), atBoot.find((entry) => entry.channel === 'slack')?.detail);
+check('nothing is verified just because its variables are set', atBoot.every((entry) => entry.verified === false));
+check('a channel with missing variables is unconfigured, not untested', await (async () => {
+  const saved = process.env.SLACK_WEBHOOK_URL;
+  delete process.env.SLACK_WEBHOOK_URL;
+  const status = channelVerification().find((entry) => entry.channel === 'slack')?.status;
+  process.env.SLACK_WEBHOOK_URL = saved;
+  return status === 'unconfigured';
+})());
 
 /* ------------------------------------------------------------------ *
  * A real send, per channel
@@ -468,6 +504,43 @@ check('the event is marked delivered', event.status === 'delivered', event.statu
 check('the attempt count went up', event.attempts === 2, String(event.attempts));
 check('the old error is cleared', event.error === null);
 
+// The retry above was a real delivery, so it is also the proof for that channel.
+const provenEmail = channelVerification().find((entry) => entry.channel === 'email');
+check('a real delivery proves its channel', provenEmail.status === 'proven', JSON.stringify(provenEmail));
+check('…and is reported as verified', provenEmail.verified === true);
+check('…with the time it was proven', Boolean(provenEmail.proofAt), String(provenEmail.proofAt));
+check('…describing what was proven', /Proven/.test(provenEmail.detail ?? ''), provenEmail.detail);
+check(
+  'another channel is still unproven',
+  channelVerification().find((entry) => entry.channel === 'slack')?.status === 'untested',
+);
+
+// A later failure on the same credentials turns the tick red instead of lying.
+db_.data.events.unshift({
+  id: 'evt_failed_again',
+  orderId: order.id,
+  channel: 'email',
+  mode: 'live',
+  status: 'failed',
+  attempts: 2,
+  error: 'HTTP 401 — API key is invalid',
+  credentials: alertChannelFingerprint('email'),
+  createdAt: new Date().toISOString(),
+  lastAttemptAt: new Date().toISOString(),
+});
+const degraded = channelVerification().find((entry) => entry.channel === 'email');
+check('a failure with the same credentials reads as failing', degraded.status === 'degraded', JSON.stringify(degraded));
+check('…and surfaces the provider error', /401/.test(degraded.lastError ?? ''), degraded.lastError);
+db_.data.events = db_.data.events.filter((event) => event.id !== 'evt_failed_again');
+
+// Rotating the key invalidates the proof rather than keeping a stale green dot.
+const beforeRotation = process.env.RESEND_API_KEY;
+process.env.RESEND_API_KEY = 're_rotated_key';
+const rotated = channelVerification().find((entry) => entry.channel === 'email');
+check('rotating a key invalidates the proof', rotated.status === 'untested', JSON.stringify(rotated));
+check('…and says the credentials changed', rotated.rotated === true && /changed/i.test(rotated.detail ?? ''), rotated.detail);
+process.env.RESEND_API_KEY = beforeRotation;
+
 const outbox = alertOutboxSummary();
 check('the outbox summary counts deliveries', outbox.counts.delivered >= 1);
 check('no failures are left behind', outbox.counts.failed === 0, JSON.stringify(outbox.counts));
@@ -552,9 +625,81 @@ const cronBody = await goodSecret.json();
 check('the right secret runs the sweep', goodSecret.status === 200, String(goodSecret.status));
 check('the sweep reports what it did', typeof cronBody.summary?.attempted === 'number');
 
+/* ------------------------------------------------------------------ *
+ * Proving a channel from the console
+ * ------------------------------------------------------------------ */
+
+console.log('\n▸ Proving a channel from the console');
+const login = await fetch(`${BASE}/api/admin/login`, {
+  method: 'POST',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ passcode: process.env.ADMIN_PASSCODE ?? '7HADMIN' }),
+});
+const { token } = await login.json();
+check('the console can sign in', Boolean(token), String(login.status));
+
+const blockedTest = await fetch(`${BASE}/api/admin/alerts/test`, {
+  method: 'POST',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ channels: ['slack'] }),
+});
+check('a test cannot be fired without an admin session', blockedTest.status === 401, String(blockedTest.status));
+
+const slackBefore = channelVerification().find((entry) => entry.channel === 'slack');
+check('slack starts this console session unproven', slackBefore.status === 'untested', JSON.stringify(slackBefore));
+
+const oneTest = await fetch(`${BASE}/api/admin/alerts/test`, {
+  method: 'POST',
+  headers: { 'content-type': 'application/json', 'x-admin-token': token },
+  body: JSON.stringify({ channels: ['slack'] }),
+});
+const oneTestBody = await oneTest.json();
+check(
+  'one channel can be tested on its own',
+  oneTestBody.results?.length === 1 && oneTestBody.results[0].channel === 'slack',
+  JSON.stringify(oneTestBody.results),
+);
+check('…and it really reached the provider', oneTestBody.results?.[0]?.status === 'delivered', oneTestBody.results?.[0]?.error);
+
+const slackProof = channelVerification().find((entry) => entry.channel === 'slack');
+check('the console test proves the channel', slackProof.status === 'proven', JSON.stringify(slackProof));
+check('…and records which credentials proved it', slackProof.fingerprint === alertChannelFingerprint('slack'));
+const proofEvent = db_.data.events.find((event) => event.channel === 'slack' && event.payload?.test);
+check('the proof is in the alert log', Boolean(proofEvent), 'no test event stored');
+check('…stamped with the credential hash', proofEvent?.credentials === alertChannelFingerprint('slack'), String(proofEvent?.credentials));
+check('…and the log says it was a test', /test/i.test(proofEvent?.message ?? ''), proofEvent?.message);
+
+// Email is already proven by the retried delivery earlier in this run; the
+// point is that a Slack test proves Slack and nothing else.
+const untouched = channelVerification().filter((entry) => !['slack', 'email'].includes(entry.channel));
+check(
+  'testing one channel does not prove the others',
+  untouched.every((entry) => entry.status !== 'proven'),
+  JSON.stringify(untouched.map((entry) => [entry.channel, entry.status])),
+);
+
+const system = await (await fetch(`${BASE}/api/admin/system`, { headers: { 'x-admin-token': token } })).json();
+check('the system panel reports verification per channel', Array.isArray(system.alerts?.verification), JSON.stringify(Object.keys(system.alerts ?? {})));
+check('…including the proven one', system.alerts.verification.find((entry) => entry.channel === 'slack')?.status === 'proven');
+check('…and never leaks a secret', !JSON.stringify(system).includes('re_good_key') && !JSON.stringify(system).includes('127.0.0.1'));
+
 const health = await (await fetch(`${BASE}/api/health`)).json();
 check('health is public and reports the database', health.database?.driver === 'file', JSON.stringify(health.database));
 check('health reports the alert channels', Array.isArray(health.alerts?.channels));
+check(
+  'health separates ready from verified',
+  health.alerts.channels.every((entry) => 'ready' in entry && 'verified' in entry && 'status' in entry),
+  JSON.stringify(health.alerts.channels[0]),
+);
+check(
+  'health shows the proven channel as verified',
+  health.alerts.channels.find((entry) => entry.channel === 'slack')?.verified === true,
+  JSON.stringify(health.alerts.channels.find((entry) => entry.channel === 'slack')),
+);
+check(
+  'health names what is missing rather than how strong a secret is',
+  health.alerts.channels.some((entry) => entry.status === 'unconfigured' || entry.verified === true),
+);
 check('health leaks no secrets', !JSON.stringify(health).includes('re_good_key'));
 
 /* ------------------------------------------------------------------ */

@@ -1304,6 +1304,34 @@ export function alertEnvCheck() {
   });
 }
 
+/**
+ * A short fingerprint of the credentials a channel is holding *right now*.
+ *
+ * `ready: true` only ever meant "the variables are non-empty". A Slack URL that
+ * was revoked months ago, a Resend key that was rotated, a Telegram chat id that
+ * was deleted — all still read as ready, and the console shows a green tick for a
+ * rail that cannot deliver a single message. So every real attempt stamps this
+ * hash on the log. Comparing it with the live environment is what turns "looks
+ * configured" into "proven, with these exact credentials".
+ *
+ * One-way, truncated, and deliberately not the value: it can sit in the database
+ * and on a public health endpoint without leaking a token.
+ */
+export function alertChannelFingerprint(channel) {
+  const keys = ALERT_ENV[channel];
+  if (!keys?.length) return null;
+  const values = keys.map((key) => `${key}=${process.env[key] ?? ''}`);
+  if (values.every((pair) => pair.endsWith('='))) return null;
+  return crypto
+    .createHash('sha256')
+    .update(`${channel}::${values.join('|')}`)
+    .digest('hex')
+    .slice(0, 16);
+}
+
+/** The variables a channel needs (used by the console's "missing" list). */
+export const alertChannelKeys = (channel) => [...(ALERT_ENV[channel] ?? [])];
+
 const senderDomain = () =>
   (process.env.NOTIFY_EMAIL_FROM ?? 'onboarding@resend.dev').includes('@')
     ? (process.env.NOTIFY_EMAIL_FROM ?? 'onboarding@resend.dev').split('@')[1].replace(/[>)].*$/, '')

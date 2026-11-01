@@ -521,11 +521,35 @@ export interface AlertFailure {
   message?: string;
 }
 
+/**
+ * Whether a channel is *proven*, not merely configured.
+ *
+ * `ready` comes from the environment (the variables are set); `verified` comes
+ * from the alert log (a provider accepted a message with the exact credentials
+ * this process holds right now). A revoked Slack URL or a rotated Resend key is
+ * `ready` but never `verified` — which is the whole point.
+ */
+export interface AlertChannelVerification {
+  channel: string;
+  ready: boolean;
+  verified: boolean;
+  status: 'proven' | 'untested' | 'degraded' | 'unconfigured';
+  fingerprint: string | null;
+  proofAt: string | null;
+  lastAttemptAt: string | null;
+  lastError: string | null;
+  target: string | null;
+  rotated: boolean;
+  missing: string[];
+  detail: string;
+}
+
 export interface SystemHealth {
   database: DatabaseHealth;
   alerts: {
     channels: { channel: string; label: string; icon?: string; live: boolean; mode: string; detail: string }[];
     env: AlertChannelEnv[];
+    verification?: AlertChannelVerification[];
     outbox: {
       counts: Record<string, number>;
       failures: AlertFailure[];

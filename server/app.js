@@ -57,6 +57,7 @@ import { db_, ensureDirs, newOrderId, newId, refreshStore, storeReady, UPLOAD_DI
 import {
   alertOutboxSummary,
   automationConfig,
+  channelVerification,
   autoForwardOrder,
   buildPlantPayload,
   emitOrderEvents,
@@ -69,6 +70,7 @@ import {
   reconcileEvents,
   retryEvent,
   retryFailedAlerts,
+  stampAlertProof,
 } from './webhooks.js';
 
 const api = express.Router();
@@ -139,8 +141,19 @@ api.get('/api/health', async (req, res) => {
     path: req.path,
     query: Object.keys(req.query),
     database,
+    // `ready` is the environment; `verified` is proof. A channel can be ready and
+    // still unverified — that is the difference between "the variables are set"
+    // and "a provider accepted a message with these credentials".
     alerts: {
-      channels: alertEnvCheck().map((entry) => ({ channel: entry.channel, ready: entry.ready, missing: entry.missing })),
+      channels: channelVerification().map((entry) => ({
+        channel: entry.channel,
+        ready: entry.ready,
+        verified: entry.verified,
+        status: entry.status,
+        proofAt: entry.proofAt,
+        lastError: entry.lastError,
+        missing: entry.missing,
+      })),
     },
   });
 });
@@ -889,6 +902,7 @@ api.get('/api/admin/system', requireAdmin, async (_req, res) => {
     alerts: {
       channels: notificationChannels(),
       env: alertEnvCheck(),
+      verification: channelVerification(),
       outbox,
       automaticRetry: Boolean(process.env.CRON_SECRET),
     },
@@ -960,21 +974,26 @@ api.post('/api/admin/alerts/test', requireAdmin, async (req, res) => {
   // alerts?" is answerable later.
   for (const result of results) {
     if (result.status === 'unconfigured') continue;
-    db_.data.events.unshift({
-      id: newId('evt'),
-      orderId: null,
-      channel: result.channel,
-      mode: result.mode,
-      target: result.target ?? 'operations console',
-      message: `Manual test alert — ${result.status}`,
-      status: result.status,
-      attempts: 1,
-      httpStatus: result.httpStatus ?? null,
-      error: result.error ?? null,
-      createdAt: result.attemptedAt,
-      lastAttemptAt: result.attemptedAt,
-      payload: { test: true },
-    });
+    db_.data.events.unshift(
+      stampAlertProof({
+        id: newId('evt'),
+        orderId: null,
+        channel: result.channel,
+        mode: result.mode,
+        target: result.target ?? 'operations console',
+        message: `Manual test alert — ${result.status}`,
+        status: result.status,
+        attempts: 1,
+        httpStatus: result.httpStatus ?? null,
+        error: result.error ?? null,
+        createdAt: result.attemptedAt,
+        lastAttemptAt: result.attemptedAt,
+        // Which credentials answered — the console calls a channel "proven" only
+        // while this hash matches the environment it is holding today.
+        credentials: null,
+        payload: { test: true },
+      }),
+    );
   }
   db_.data.events.length = Math.min(db_.data.events.length, 300);
   db_.save();
