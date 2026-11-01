@@ -5,6 +5,10 @@ import { Icon } from '../ui/Icon';
 import { useToast } from '../ui/Toast';
 import type { AlertTestResult, SystemHealth, TelegramChats, TelegramWebhook } from '../../types';
 
+// The plant rail is excluded on purpose: proving it would email a real pressing
+// plant a fictitious order. It is proven by the first genuine hand-off.
+const TESTABLE = new Set(['email', 'telegram', 'slack', 'whatsapp', 'webhook']);
+
 const CHANNEL_LABEL: Record<string, string> = {
   email: 'Email',
   whatsapp: 'WhatsApp',
@@ -321,6 +325,7 @@ export function SystemPanel() {
                       {CHANNEL_LABEL[channel.channel] ?? channel.channel}
                     </span>
                     <span className="flex items-center gap-1.5">
+                      {TESTABLE.has(channel.channel) && (
                       <button
                         type="button"
                         onClick={() => void testOne(channel.channel)}
@@ -330,6 +335,7 @@ export function SystemPanel() {
                       >
                         {testingChannel === channel.channel ? 'testing…' : 'test'}
                       </button>
+                      )}
                       <span
                         className={`rounded-full px-1.5 py-0.5 text-[8.5px] font-semibold uppercase tracking-wider ${badge.className}`}
                       >
