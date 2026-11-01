@@ -8,6 +8,7 @@ import type {
   CompanyConfig,
   LedgerRow,
   LedgerTotals,
+  PriceReference,
   Order,
   PlantMargin,
   PlantSheet,
@@ -175,6 +176,14 @@ export const api = {
     return request<{ rows: LedgerRow[]; totals: LedgerTotals; grandTotals: LedgerTotals }>(
       `/api/admin/payments${suffix ? `?${suffix}` : ''}`,
     );
+  },
+
+  priceFloor: (query: { vinylTypeId?: string; sleeveId?: string } = {}) => {
+    const params = new URLSearchParams();
+    if (query.vinylTypeId) params.set('vinylTypeId', query.vinylTypeId);
+    if (query.sleeveId) params.set('sleeveId', query.sleeveId);
+    const suffix = params.toString();
+    return request<PriceReference>(`/api/admin/price-floor${suffix ? `?${suffix}` : ''}`);
   },
 
   plantSheet: (id: string, plant: string) =>

@@ -469,6 +469,12 @@ export function marginCheck(order) {
   const revenue = num(order?.quote?.total) ?? 0;
   const record = order?.plantQuote ?? null;
   if (!record || !Number.isFinite(Number(record.costUsd))) {
+    // Until the plant answers, show the desk the modelled floor the order was
+    // priced from — otherwise "unverified" reads as "we have no idea", when in
+    // fact we know what the basket should cost to land.
+    const model = order?.quote?.cost ?? null;
+    const estimatedLanded = num(model?.landedUsd);
+    const estimatedMargin = estimatedLanded == null ? null : Math.round((revenue - estimatedLanded + Number.EPSILON) * 100) / 100;
     return {
       status: 'unverified',
       revenueUsd: revenue,
@@ -479,7 +485,19 @@ export function marginCheck(order) {
       marginUsd: null,
       marginPct: null,
       lossRisk: false,
-      detail: 'No plant quote recorded yet — record what the plant actually charges before forwarding.',
+      /** What our cost model says this basket lands at, from the plant's price. */
+      estimatedLandedUsd: estimatedLanded,
+      estimatedMarginUsd: estimatedMargin,
+      estimatedSource: model?.plant?.confidence ? `${model.plant.name} · ${model.plant.confidence}` : null,
+      costModel: order?.quote?.costModel ?? null,
+      detail:
+        estimatedLanded == null
+          ? 'No plant quote recorded yet — record what the plant actually charges before forwarding.'
+          : `No plant quote recorded yet. Our cost model lands this basket at ${money(
+              estimatedLanded,
+            )} against ${money(revenue)} paid (${money(
+              estimatedMargin,
+            )}); record the plant's actual quote before forwarding.`,
     };
   }
 

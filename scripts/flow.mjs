@@ -5,6 +5,8 @@
 import { JSDOM } from 'jsdom';
 import { createServer } from 'vite';
 
+import { calculateQuote } from '../shared/pricing.js';
+
 const PORT = process.env.PORT ?? '4173';
 const BASE = `http://localhost:${PORT}`;
 const fetchImpl = globalThis.fetch;
@@ -109,7 +111,10 @@ try {
   await wait(120);
 
   assert(text().includes('Review & checkout'), 'advanced to review step');
-  assert(text().includes('$1,856.25'), 'deposit amount shown in review');
+  // The basket this walk-through builds: 250 × 12" colour in a gatefold.
+  const expected = calculateQuote({ quantity: 250, vinylTypeId: 'lp_colored', sleeveId: 'gatefold' });
+  const depositText = `$${expected.deposit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  assert(text().includes(depositText), `deposit amount shown in review (${depositText})`);
 
   button('Place order').click();
   await wait(1400);
@@ -133,7 +138,11 @@ try {
 
   const created = overview.orders.find((order) => `/order/${order.id}` === path);
   assert(Boolean(created), 'order appears in the admin overview');
-  assert(created?.quote.total === 3712.5, `server quote matches client quote ($${created?.quote.total})`);
+  assert(
+    created?.quote.total === expected.total,
+    `server quote matches the shared engine ($${created?.quote.total} vs $${expected.total})`,
+  );
+  assert(created?.quote.total >= created?.quote.cost.landedUsd, 'the booked order clears its landed floor');
   assert(created?.files.audioLink.includes('drive.google.com'), 'master link stored');
   assert(
     overview.events.some((event) => event.orderId === created?.id && event.channel === 'slack'),

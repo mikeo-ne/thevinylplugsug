@@ -15,6 +15,9 @@
  * turn a quoted dollar price into a loss. Last reviewed 2026-10-29.
  * Override with FX_UGX_PER_USD on the server (and in Vercel) without a deploy.
  */
+import { PLANT_ADD_ONS, factoryCostForPlant } from './plant-costs.js';
+import { landedCost } from './landed-cost.js';
+
 export const DEFAULT_FX_UGX_PER_USD = 4360;
 
 export const MANAGEMENT_FEE_RATE = 0.25;
@@ -106,7 +109,8 @@ export const SLEEVE_OPTIONS = [
     name: 'Gatefold',
     shortName: 'Gatefold',
     description: 'Deluxe double-panel gatefold sleeve with spine print.',
-    perUnit: 2.2,
+    // Cost is $2.60/unit at the plant (see PLANT_ADD_ONS); priced above it.
+    perUnit: 3.2,
   },
   {
     id: 'inner',
@@ -114,7 +118,8 @@ export const SLEEVE_OPTIONS = [
     name: 'Printed Inner Sleeve',
     shortName: 'Printed inner',
     description: 'Standard jacket plus a full-colour printed inner sleeve.',
-    perUnit: 1.1,
+    // Cost is $1.30/unit at the plant (see PLANT_ADD_ONS); priced above it.
+    perUnit: 1.6,
   },
 ];
 
@@ -288,6 +293,123 @@ export function resolvePlant(plantId, quantity) {
   const fallback = candidates[0] ?? null;
   return { plant: fallback, adjusted: Boolean(fallback && requested) , requested };
 }
+/* ── the price floor ──────────────────────────────────────────────────────
+ * Everything below turns the plants' own prices into our rate card.
+ *
+ * The rule the business runs on: a quote may never sit below the plant's price
+ * plus the freight, duty, VAT and clearance it takes to land the records in
+ * Kampala. So we price from the cost up rather than from a guessed rate card
+ * down, and we hold every run size to the **most expensive plant that quotes
+ * it** — if we sell a 250-unit run and the client's basket has to go to a UK
+ * boutique, the price already covers that boutique.
+ */
+
+/** Round a unit price up to the next 5 cents, so a quote never rounds into a loss. */
+export const ceilPrice = (value) => Math.ceil((Number(value) || 0) * 20 - 1e-9) / 20;
+
+/** The reference basket we price every tier from. */
+const REFERENCE_SLEEVE_ID = 'standard';
+
+/** The plant's invoice for one basket at one plant. */
+export function plantEstimate(plant, { quantity, vinylTypeId, sleeveId }) {
+  return factoryCostForPlant(plant, { quantity, vinylTypeId, sleeveId });
+}
+
+/**
+ * The cost floor for a basket: what it costs us to land it, and therefore what
+ * it may never be sold below.
+ */
+export function costFloor({ quantity, vinylTypeId, sleeveId, plantId, fxRate = DEFAULT_FX_UGX_PER_USD }) {
+  const qty = toNumber(quantity);
+  const plant = findPlant(plantId);
+  // A floor is only meaningful for a plant that will actually quote the run.
+  if (!plant || !plantSupportsQuantity(plant, qty)) return null;
+  const estimate = plantEstimate(plant, { quantity: qty, vinylTypeId, sleeveId });
+  const landed = landedCost({
+    factoryCost: estimate.factoryCost,
+    quantity: qty,
+    vinylTypeId,
+    sleeveId,
+  });
+  const rate = toNumber(fxRate) > 0 ? toNumber(fxRate) : DEFAULT_FX_UGX_PER_USD;
+  return {
+    plantId: plant.id,
+    plantName: plant.name,
+    confidence: estimate.confidence,
+    source: estimate.source,
+    factoryCost: estimate.factoryCost,
+    addOns: {
+      freightUsd: landed.freightUsd,
+      dutyUsd: landed.dutyUsd,
+      vatUsd: landed.vatUsd,
+      clearanceUsd: landed.clearanceUsd,
+      total: landed.addOnsUsd,
+    },
+    landedUsd: landed.landedUsd,
+    landedUgx: Math.round(landed.landedUsd * rate),
+    weightKg: landed.weightKg,
+    mode: landed.mode,
+  };
+}
+
+/**
+ * Every plant that will quote this basket, with its price and the landed cost.
+ * Sorted by landed cost, so the cheapest source is first.
+ */
+export function floorComparison({ quantity, vinylTypeId, sleeveId }) {
+  return plantsForQuantity(quantity)
+    .map((plant) => costFloor({ quantity, vinylTypeId, sleeveId, plantId: plant.id }))
+    .filter(Boolean)
+    .sort((a, b) => a.landedUsd - b.landedUsd);
+}
+
+/** The highest landed cost among the plants that can press this basket. */
+export function bindingFloor({ quantity, vinylTypeId, sleeveId }) {
+  const rows = floorComparison({ quantity, vinylTypeId, sleeveId });
+  if (rows.length === 0) return null;
+  return rows.reduce((worst, row) => (row.landedUsd > worst.landedUsd ? row : worst), rows[0]);
+}
+
+/**
+ * Our rate card, derived from the plants' prices.
+ *
+ * Pressing prices are the highest plant cost for that basket at that run size,
+ * rounded up to the next 5 cents; plates, cutting and test presses are inside
+ * those prices, so there is no separate setup fee any more. This is what makes
+ * "no losses on any plant" structural rather than a promise.
+ */
+export function bindingFactoryCost({ quantity, vinylTypeId, sleeveId }) {
+  const plants = plantsForQuantity(quantity);
+  if (plants.length === 0) return null;
+  return plants.reduce((worst, plant) => {
+    const cost = factoryCostForPlant(plant, { quantity, vinylTypeId, sleeveId });
+    return !worst || cost.factoryCost > worst.factoryCost ? cost : worst;
+  }, null);
+}
+
+function buildRateCard() {
+  const card = {};
+  for (const type of VINYL_TYPES) {
+    card[type.id] = { unit: {}, setup: {} };
+    for (const quantity of QUANTITIES) {
+      // The dearest plant's *invoice* — freight and duty are added once, in
+      // calculateQuote, never baked in here.
+      const factory = bindingFactoryCost({ quantity, vinylTypeId: type.id, sleeveId: REFERENCE_SLEEVE_ID });
+      card[type.id].unit[quantity] = factory ? ceilPrice(factory.factoryCost / quantity) : 0;
+      card[type.id].setup[quantity] = 0;
+    }
+  }
+  return card;
+}
+
+const RATE_CARD = buildRateCard();
+
+for (const type of VINYL_TYPES) {
+  type.unit = RATE_CARD[type.id].unit;
+  type.setup = RATE_CARD[type.id].setup;
+  // The flat fallback fee is gone: plates are inside the plant's unit price.
+  type.setupFee = 0;
+}
 
 /**
  * Build the full commercial breakdown for a configuration.
@@ -332,17 +454,26 @@ export function calculateQuote({
     };
   }
 
-  const plantFactor = plant.priceFactor ?? 1;
   const pressingCost = roundMoney(unitPrice * qty);
   const sleeveCost = roundMoney(sleeve.perUnit * qty);
   const setupCost = roundMoney(setupFeeFor(vinylType, qty));
+  const rateCardCost = roundMoney(pressingCost + setupCost + sleeveCost);
 
-  // A plant's rate card is applied to the pressing itself, never to the sleeve
-  // upgrade or the 7H fee.
-  const plantAdjustment = roundMoney((pressingCost + setupCost) * (plantFactor - 1));
-  const factoryCost = roundMoney(pressingCost + setupCost + plantAdjustment + sleeveCost);
-  const managementFee = roundMoney(factoryCost * MANAGEMENT_FEE_RATE);
-  const total = roundMoney(factoryCost + managementFee);
+  // What the chosen plant will actually invoice us for this exact basket. The
+  // rate card is built from the dearest plant, so this should sit at or below it;
+  // when a plant's price runs ahead of the card we sell at the plant's number
+  // rather than at the card, which is the whole point of the floor.
+  const plantCost = plantEstimate(plant, { quantity: qty, vinylTypeId, sleeveId });
+  const costBasis = roundMoney(Math.max(rateCardCost, plantCost.factoryCost));
+  const plantUplift = roundMoney(costBasis - rateCardCost);
+
+  // Freight, duty, VAT and clearance are charged on the plant's *actual*
+  // invoice, not on our rate card — which is why a cheaper plant is worth more
+  // margin to us without costing the client a shilling less.
+  const landed = landedCost({ factoryCost: plantCost.factoryCost, quantity: qty, vinylTypeId, sleeveId });
+  const margin = roundMoney(costBasis * MANAGEMENT_FEE_RATE);
+  const managementFee = roundMoney(landed.addOnsUsd + margin);
+  const total = roundMoney(costBasis + managementFee);
   const deposit = roundMoney(total * DEPOSIT_RATE);
   const balance = roundMoney(total - deposit);
 
@@ -360,12 +491,15 @@ export function calculateQuote({
       pressingCost,
       sleeveCost,
       setupCost,
-      plantAdjustment,
-      plantFactor,
+      plantAdjustment: 0,
+      plantFactor: 1,
+      /** Extra charged when the chosen plant prices above our rate card. */
+      plantUplift,
       unitPrice: roundMoney(unitPrice),
       sleevePerUnit: roundMoney(sleeve.perUnit),
     },
-    factoryCost,
+    /** Plant invoice. Kept as `factoryCost` so existing documents still add up. */
+    factoryCost: costBasis,
     managementFee,
     managementFeeRate: MANAGEMENT_FEE_RATE,
     total,
@@ -374,16 +508,48 @@ export function calculateQuote({
     balance,
     depositRate: DEPOSIT_RATE,
     currency: 'USD',
+    /**
+     * The cost model behind the price: the plant's own quote for this basket, the
+     * landed add-ons, and the margin the fee carries once they are paid.
+     */
+    cost: {
+      plant: {
+        id: plant.id,
+        name: plant.name,
+        confidence: plantCost.confidence,
+        source: plantCost.source,
+        invoiceUsd: plantCost.factoryCost,
+        perUnit: plantCost.perUnit,
+      },
+      rateCardUsd: rateCardCost,
+      plantUplift,
+      weightKg: landed.weightKg,
+      mode: landed.mode,
+      freightUsd: landed.freightUsd,
+      dutyUsd: landed.dutyUsd,
+      vatUsd: landed.vatUsd,
+      clearanceUsd: landed.clearanceUsd,
+      addOnsUsd: landed.addOnsUsd,
+      landedUsd: landed.landedUsd,
+      marginUsd: margin,
+      /** Total above the plant's invoice: freight, taxes, clearance and margin. */
+      grossMarginUsd: roundMoney(total - costBasis),
+      netMarginUsd: roundMoney(total - landed.landedUsd),
+      /** What the fee is as a share of the factory invoice, for the console. */
+      effectiveFeeRate: roundMoney((managementFee / (costBasis || 1)) * 100) / 100,
+      /** Never negative by construction — this is the guard, and the test asserts it. */
+      clearsFloor: total >= landed.landedUsd,
+    },
     // Shilling lines are derived from the USD total, not rounded independently:
     // the fee is the difference between the two, so the itemised bill adds up to
     // the shilling total to the last shilling (rounding three lines separately is
     // how an invoice ends up a few shillings short).
     totals: (() => {
       const totalUgx = Math.round(total * rate);
-      const factoryUgx = Math.round(factoryCost * rate);
+      const factoryUgx = Math.round(costBasis * rate);
       const depositUgx = Math.round(deposit * rate);
       return {
-        factoryCost: { usd: factoryCost, ugx: factoryUgx },
+        factoryCost: { usd: costBasis, ugx: factoryUgx },
         managementFee: { usd: managementFee, ugx: totalUgx - factoryUgx },
         total: { usd: total, ugx: totalUgx },
         deposit: { usd: deposit, ugx: depositUgx },
@@ -392,6 +558,36 @@ export function calculateQuote({
       };
     })(),
   };
+}
+
+/**
+ * The comparison the business asked for: every plant's own price for the same
+ * basket, next to what we charge, at every run size. Used by the console and by
+ * `npm run test:floor`.
+ */
+export function priceReference({ vinylTypeId = 'lp_standard', sleeveId = 'standard' } = {}) {
+  return QUANTITIES.map((quantity) => {
+    const rows = floorComparison({ quantity, vinylTypeId, sleeveId });
+    const quote = calculateQuote({ quantity, vinylTypeId, sleeveId, plantId: rows[0]?.plantId });
+    const binding = rows[rows.length - 1] ?? null;
+    return {
+      quantity,
+      ourPriceUsd: quote.valid ? quote.total : null,
+      ourPerUnitUsd: quote.valid ? quote.perUnit : null,
+      bindingFloorUsd: binding ? binding.landedUsd : null,
+      lines: rows.map((row) => ({
+        plantId: row.plantId,
+        plantName: row.plantName,
+        confidence: row.confidence,
+        factoryUsd: row.factoryCost,
+        landedUsd: row.landedUsd,
+        landedPerUnitUsd: Math.round((row.landedUsd / quantity) * 100) / 100,
+        /** Positive: we sell above that plant's landed cost. */
+        coverUsd: quote.valid ? Math.round((quote.total - row.landedUsd) * 100) / 100 : null,
+        clearsFloor: quote.valid ? quote.total >= row.landedUsd : false,
+      })),
+    };
+  });
 }
 
 /** Machine-readable specs forwarded to the plant. */

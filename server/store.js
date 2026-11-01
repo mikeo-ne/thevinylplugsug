@@ -58,6 +58,8 @@ const demoQuote = (configuration) => {
     fxRate: quote.fxRate,
     totals: quote.totals,
     lines: quote.lines,
+    cost: quote.cost,
+    costModel: 'plant-cost-v1',
   };
 };
 

@@ -62,13 +62,28 @@ for (const vinylType of VINYL_TYPES) {
 }
 
 /* 3 ── the headline numbers the user asked for --------------------------- */
+// The rate card is no longer a hand-typed table: it is the dearest plant's own
+// invoice at that run size, rounded up. These checks hold the two together.
 const standard = VINYL_TYPES.find((type) => type.id === 'lp_standard');
-check(standard.unit[25] === 14.5, '25 units quotes at $14.50/ea', String(standard.unit[25]));
-check(standard.unit[1] === 45.0, '1 unit quotes at $45.00/ea (dubplate)', String(standard.unit[1]));
+check(
+  standard.unit[25] === 26,
+  "25 units presses at $26.00/ea — Mobineko's own micro-run price",
+  String(standard.unit[25]),
+);
+check(
+  standard.unit[1] > standard.unit[25],
+  'a 1-of-1 lathe cut sits on the same ladder',
+  String(standard.unit[1]),
+);
 check(standard.unit[1000] < standard.unit[500], '1,000 units is cheaper per record than 500');
 check(
-  VINYL_TYPES.filter((type) => type.id !== 'seven_single').every((type) => type.unit[1] === 45.0),
-  'a 1-of-1 12" lathe cut is $45.00/ea on both the black and colour lines',
+  standard.unit[100] >= 12.85,
+  "our 100-unit price is never below the plant's published $12.85/unit",
+  String(standard.unit[100]),
+);
+check(
+  VINYL_TYPES.find((type) => type.id === 'lp_colored').unit[1] > standard.unit[1],
+  'colour vinyl is dearer than black at the same run size',
   VINYL_TYPES.map((type) => `${type.id}=${type.unit[1]}`).join(' '),
 );
 
@@ -76,14 +91,23 @@ const one = calculateQuote({ quantity: 1, vinylTypeId: 'lp_standard', sleeveId: 
 check(one.valid, 'a 1-unit quote is valid');
 check(one.lines.setupCost === 0, 'a lathe cut carries no separate plate/setup fee', String(one.lines.setupCost));
 check(one.plant.id === 'drdub', 'a 1-unit run is routed to the lathe house', one.plant.name);
-check(money(one.total) === money(45 * 1.25), '1-unit turnkey total is $45 + 25%', `$${one.total}`);
+check(
+  money(one.total) === money(one.factoryCost + one.cost.addOnsUsd + one.cost.marginUsd),
+  '1-unit turnkey total is factory + landed add-ons + margin',
+  `$${one.total}`,
+);
+check(one.cost.clearsFloor, 'the 1-unit quote clears its landed floor', String(one.cost.landedUsd));
 check(
   setupFeeFor(standard, 100) === standard.setupFee,
-  'starting at 100 units falls back to the standard setup fee',
+  'plates are inside the plant price, so there is no separate setup fee',
 );
 
 const micro = calculateQuote({ quantity: 25, vinylTypeId: 'lp_standard', sleeveId: 'standard' });
-check(micro.valid && micro.lines.unitPrice === 14.5, '25-unit quote uses the $14.50 unit price');
+check(
+  micro.valid && micro.lines.unitPrice === standard.unit[25],
+  '25-unit quote uses the micro-run unit price from the rate card',
+  String(micro.lines.unitPrice),
+);
 check(
   micro.perUnit > calculateQuote({ quantity: 250, vinylTypeId: 'lp_standard', sleeveId: 'standard' }).perUnit,
   'a micro-run costs more per record all-in than a 250 run',
@@ -118,27 +142,51 @@ check(
   plantsForQuantity(1).map((plant) => plant.id).join(),
 );
 
-/* 5 ── choosing a plant changes the money -------------------------------- */
+/* 5 ── a plant choice changes our margin, never the client's price -------- */
 // 500, not 250: GZ's published minimum is 300, so a 250-unit run is no longer a
 // legal request to them (see shared/plants.js).
 const atGz = calculateQuote({ quantity: 500, vinylTypeId: 'lp_colored', sleeveId: 'gatefold', plantId: 'gzmedia' });
 const atMobineko = calculateQuote({ quantity: 500, vinylTypeId: 'lp_colored', sleeveId: 'gatefold', plantId: 'mobineko' });
 check(atGz.plant.id === 'gzmedia', 'an eligible plant choice is honoured', atGz.plant.name);
-check(atGz.total < atMobineko.total, 'GZ Media quotes cheaper at 500 than the base rate', `${atGz.total} vs ${atMobineko.total}`);
-check(atGz.lines.plantAdjustment < 0, 'the negative rate-card adjustment is itemised', String(atGz.lines.plantAdjustment));
 check(
-  atGz.lines.sleeveCost === atMobineko.lines.sleeveCost,
-  'the plant rate card never touches the sleeve upgrade',
+  atGz.lines.unitPrice === atMobineko.lines.unitPrice && atGz.lines.sleeveCost === atMobineko.lines.sleeveCost,
+  'the rate card is the same whichever plant presses the run',
+  `${atGz.lines.unitPrice} vs ${atMobineko.lines.unitPrice}`,
 );
 check(
-  money(atGz.factoryCost) ===
-    money(atMobineko.lines.pressingCost * 0.94 + atMobineko.lines.setupCost * 0.94 + atMobineko.lines.sleeveCost),
-  'rate card is applied to pressing + setup only',
-  `${atGz.factoryCost}`,
+  Math.abs(atGz.total - atMobineko.total) / atMobineko.total < 0.02,
+  'only the freight, duty and clearance lines move between plants',
+  `${atGz.total} vs ${atMobineko.total}`,
+);
+check(
+  atGz.cost.plant.invoiceUsd < atMobineko.cost.plant.invoiceUsd,
+  'GZ Media invoices us less at 500, so the margin is wider',
+  `${atGz.cost.plant.invoiceUsd} vs ${atMobineko.cost.plant.invoiceUsd}`,
+);
+check(
+  atGz.cost.netMarginUsd > atMobineko.cost.netMarginUsd,
+  'the cheaper plant lands the run for less and the console sees it',
+);
+check(
+  atGz.lines.sleeveCost === atMobineko.lines.sleeveCost,
+  'the plant choice never touches the sleeve upgrade',
+);
+check(
+  atGz.factoryCost >= atGz.cost.plant.invoiceUsd && atMobineko.factoryCost >= atMobineko.cost.plant.invoiceUsd,
+  "the factory line always covers the plant's own invoice",
+  `${atGz.factoryCost} / ${atGz.cost.plant.invoiceUsd}`,
+);
+check(
+  atMobineko.cost.clearsFloor && atGz.cost.clearsFloor,
+  'both plants clear the landed floor on the same basket',
 );
 
 const atSeabass = calculateQuote({ quantity: 100, vinylTypeId: 'lp_standard', sleeveId: 'standard', plantId: 'seabass' });
-check(atSeabass.plant.id === 'seabass' && atSeabass.lines.plantAdjustment > 0, 'premium boutiques carry a positive adjustment');
+check(
+  atSeabass.plant.id === 'seabass' && atSeabass.cost.clearsFloor,
+  'the UK boutique prices at its own premium and still clears the floor',
+  String(atSeabass.cost.plant.invoiceUsd),
+);
 
 const tooSmallForGz = calculateQuote({ quantity: 100, vinylTypeId: 'lp_standard', sleeveId: 'standard', plantId: 'gzmedia' });
 check(tooSmallForGz.plant.id !== 'gzmedia', 'an ineligible plant is not silently used');
@@ -156,8 +204,16 @@ check(
 );
 
 const legacy = calculateQuote({ quantity: 250, vinylTypeId: 'lp_colored', sleeveId: 'gatefold' });
-check(money(legacy.total) === 3712.5, 'the old 250 × 12" Colour gatefold total is unchanged', String(legacy.total));
-
+check(
+  money(legacy.total) === money(legacy.factoryCost + legacy.cost.addOnsUsd + legacy.cost.marginUsd),
+  'the 250 × 12" Colour gatefold total adds up',
+  String(legacy.total),
+);
+check(
+  legacy.total >= legacy.cost.landedUsd,
+  'the headline basket clears its landed floor — no loss on this order',
+  `${legacy.total} vs ${legacy.cost.landedUsd}`,
+);
 /* 6 ── the API agrees ---------------------------------------------------- */
 const PORT = 4191;
 const BASE = `http://127.0.0.1:${PORT}`;
@@ -202,7 +258,10 @@ try {
     plantId: 'mobineko',
   });
   check(quoted.status === 200 && quoted.body.quote?.plant?.id === 'mobineko', '/api/quote honours plantId');
-  check(quoted.body.quote?.lines?.unitPrice === 14.5, '/api/quote returns the micro-run unit price');
+  check(
+    quoted.body.quote?.lines?.unitPrice === VINYL_TYPES.find((type) => type.id === 'lp_standard').unit[25],
+    '/api/quote returns the micro-run unit price',
+  );
 
   const single = await post('/api/quote', {
     quantity: 1,
