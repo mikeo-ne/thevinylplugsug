@@ -38,6 +38,7 @@ export function SystemPanel() {
   const [testing, setTesting] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const [results, setResults] = useState<AlertTestResult[] | null>(null);
+  const [testingChannel, setTestingChannel] = useState<string | null>(null);
   const [telegram, setTelegram] = useState<TelegramChats | null>(null);
   const [findingChats, setFindingChats] = useState(false);
   const [webhook, setWebhook] = useState<TelegramWebhook | null>(null);
@@ -148,6 +149,35 @@ export function SystemPanel() {
     }
   };
 
+  /**
+   * Prove one channel on its own. Sending every test at once is fine, but the
+   * question people actually ask is "does *this* one work?" — and that answer
+   * should not depend on the other four.
+   */
+  const testOne = async (channel: string) => {
+    setTestingChannel(channel);
+    try {
+      const { results: sent } = await api.adminTestAlerts([channel]);
+      setResults((previous) => {
+        const others = (previous ?? []).filter((entry) => entry.channel !== channel);
+        return [...others, ...sent];
+      });
+      const outcome = sent.find((entry) => entry.channel === channel);
+      if (outcome?.status === 'delivered') {
+        notify(`${CHANNEL_LABEL[channel] ?? channel} is proven — a provider accepted it.`, 'success');
+      } else if (outcome?.status === 'unconfigured') {
+        notify(outcome.error ?? 'That channel has no credentials yet.', 'error');
+      } else if (outcome) {
+        notify(`${CHANNEL_LABEL[channel] ?? channel} failed — ${outcome.error ?? 'unknown error'}`, 'error');
+      }
+      await load();
+    } catch (failure) {
+      notify(failure instanceof ApiError ? failure.message : 'Could not send the test.', 'error');
+    } finally {
+      setTestingChannel(null);
+    }
+  };
+
   const retryFailed = async () => {
     setRetrying(true);
     try {
@@ -168,6 +198,20 @@ export function SystemPanel() {
 
   const database = system?.database;
   const env = system?.alerts.env ?? [];
+  const verification = system?.alerts.verification ?? [];
+
+  /**
+   * Three states, not two. "live" used to mean only that a variable was non-empty
+   * — a green tick over a revoked Slack URL. Now green means a provider answered
+   * with these exact credentials, amber means untested, red means it failed.
+   */
+  const proofFor = (channel: string) => verification.find((entry) => entry.channel === channel);
+  const BADGE: Record<string, { label: string; className: string }> = {
+    proven: { label: 'proven', className: 'bg-lime/[0.12] text-lime' },
+    untested: { label: 'not proven', className: 'bg-amber-400/[0.1] text-amber-200' },
+    degraded: { label: 'failing', className: 'bg-red-400/[0.12] text-red-300' },
+    unconfigured: { label: 'not set up', className: 'bg-white/[0.06] text-muted' },
+  };
   const outbox = system?.alerts.outbox;
 
   return (
@@ -267,6 +311,8 @@ export function SystemPanel() {
             {(system?.alerts.channels ?? []).map((channel) => {
               const channelEnv = env.find((entry) => entry.channel === channel.channel);
               const result = results?.find((entry) => entry.channel === channel.channel);
+              const proof = proofFor(channel.channel);
+              const badge = BADGE[proof?.status ?? (channel.live ? 'untested' : 'unconfigured')];
               return (
                 <li key={channel.channel} className="rounded-lg border border-white/[0.07] bg-white/[0.02] px-3 py-2">
                   <div className="flex items-center justify-between gap-2">
@@ -274,19 +320,45 @@ export function SystemPanel() {
                       <Icon name={CHANNEL_ICON[channel.channel] ?? 'bolt'} size={11} className="text-muted" />
                       {CHANNEL_LABEL[channel.channel] ?? channel.channel}
                     </span>
-                    <span
-                      className={`rounded-full px-1.5 py-0.5 text-[8.5px] font-semibold uppercase tracking-wider ${
-                        channel.live
-                          ? 'bg-lime/[0.12] text-lime'
-                          : 'bg-amber-400/[0.1] text-amber-200'
-                      }`}
-                    >
-                      {channel.live ? 'live' : 'simulated'}
+                    <span className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => void testOne(channel.channel)}
+                        disabled={testingChannel !== null}
+                        title={`Send a real test to ${CHANNEL_LABEL[channel.channel] ?? channel.channel} and record what the provider says`}
+                        className="text-[9px] uppercase tracking-[0.12em] text-muted transition-colors hover:text-bone disabled:opacity-30"
+                      >
+                        {testingChannel === channel.channel ? 'testing…' : 'test'}
+                      </button>
+                      <span
+                        className={`rounded-full px-1.5 py-0.5 text-[8.5px] font-semibold uppercase tracking-wider ${badge.className}`}
+                      >
+                        {badge.label}
+                      </span>
                     </span>
                   </div>
                   <p className="mt-0.5 truncate text-[10.5px] text-muted" title={channel.detail}>
                     {channel.detail}
                   </p>
+
+                  {proof?.status === 'proven' && (
+                    <p className="mt-0.5 truncate text-[9.5px] text-lime/70" title={proof.detail}>
+                      Proven {proof.proofAt ? dateTime(proof.proofAt) : 'recently'}
+                      {proof.target ? ` → ${proof.target}` : ''}
+                    </p>
+                  )}
+                  {proof?.status === 'degraded' && (
+                    <p className="mt-0.5 line-clamp-2 text-[9.5px] leading-relaxed text-red-300/90">
+                      Last attempt failed — {proof.lastError ?? 'no error text'}
+                    </p>
+                  )}
+                  {proof?.status === 'untested' && (
+                    <p className="mt-0.5 text-[9.5px] leading-relaxed text-amber-200/80">
+                      {proof.rotated
+                        ? 'These credentials have never been tested — the old proof was for different ones.'
+                        : 'Configured but never proven — press test.'}
+                    </p>
+                  )}
 
                   {!channelEnv?.ready && channelEnv?.missing.length ? (
                     <p className="mt-1 font-mono text-[9.5px] leading-relaxed text-amber-200/80">

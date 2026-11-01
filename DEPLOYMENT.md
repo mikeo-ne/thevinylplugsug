@@ -266,10 +266,26 @@ There are two honest states for an alert: it left, or it did not. The console sh
    `WHATSAPP_PHONE_ID`; set `NOTIFY_WHATSAPP_TO` to the digits of the phone that should buzz. Outside
    a 24-hour window Meta only accepts an approved template — submit the body printed in
    **WhatsApp template** above (category *Utility*) and keep `WHATSAPP_TEMPLATE_NAME` in step.
-4. **Prove it.** Console → **System** → **Send test alert**. It makes one real call per configured
-   channel and prints the provider's own answer next to it — a green line means the message left,
-   and a rejection shows Resend's or Meta's exact wording (invalid key, unverified domain, template
-   not approved) instead of a silent failure.
+4. **Prove it.** Console → **System** → **Send test alert** (or the small **test** beside a single
+   channel). It makes one real call per configured channel and prints the provider's own answer next
+   to it — a green line means the message left, and a rejection shows Resend's or Meta's exact
+   wording (invalid key, unverified domain, template not approved) instead of a silent failure.
+
+   Each channel carries one of four badges, and only the first is a promise:
+
+   | Badge | Means |
+   | --- | --- |
+   | **proven** | a provider accepted a message **with the credentials this deployment holds now** |
+   | **not proven** | the variables are set, but nothing has ever confirmed they work |
+   | **failing** | the last attempt was rejected — the provider's error is printed beside it |
+   | **not set up** | a required variable is missing (named in the row) |
+
+   "Set" is not the same as "works": a revoked Slack URL, a rotated Resend key or a deleted Telegram
+   chat all still look configured. So every real attempt stamps a short one-way hash of the
+   credentials it used into the alert log. Rotating a key changes the hash, the old proof stops
+   counting, and the row drops back to **not proven** — one press of **test** proves it again. The
+   same status is public on `/api/health` (`ready` = environment, `verified` = proof), so an uptime
+   check can watch a rail rather than a variable name.
 5. **Nothing gets lost.** Every attempt is written to the alert log. Failures sit in the outbox with
    their error and attempt count, **Retry failed** re-sends them on demand, and with `CRON_SECRET`
    set the daily cron in `vercel.json` retries whatever is still failing (up to five attempts each).
