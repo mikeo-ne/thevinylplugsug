@@ -9,6 +9,7 @@ import type {
   LedgerRow,
   LedgerTotals,
   PriceReference,
+  ShopRelease,
   Order,
   PlantMargin,
   PlantSheet,
@@ -283,9 +284,44 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
+  /** Build an order for a client, from the console, and hold it as a draft. */
+  adminCreateDraft: (body: {
+    client: { name: string; email: string; phone: string; country?: string; notes?: string };
+    configuration: { quantity: number; vinylTypeId: string; sleeveId: string; plantId?: string };
+    paymentMethod?: string;
+    tracklist?: string;
+    note?: string;
+    audioLink?: string;
+    artworkLink?: string;
+  }) =>
+    request<{ order: Order; invoice: { number: string; issuedAt: string } }>('/api/admin/orders', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  /** Attach the desk's uploads (or links) to the client's order. */
+  adminAttachFiles: (id: string, body: { uploadIds?: string[]; audioLink?: string; artworkLink?: string }) =>
+    request<{ order: Order; attached: { id: string; kind: string; originalName: string }[]; missing: string[] }>(
+      `/api/admin/orders/${encodeURIComponent(id)}/files`,
+      { method: 'POST', body: JSON.stringify(body) },
+    ),
+
   adminSetStock: (releaseId: string, stock: number) =>
     request<{ releaseId: string; stock: number }>(
       `/api/admin/shop/stock/${encodeURIComponent(releaseId)}`,
       { method: 'PATCH', body: JSON.stringify({ stock }) },
+    ),
+
+  /** Sell a release before it is pressed: the storefront then says so. */
+  adminSetPreorder: (releaseId: string, body: { shipsOn: string; note?: string }) =>
+    request<{ preorder: { shipsOn: string; note: string | null }; releases: ShopRelease[] }>(
+      `/api/admin/shop/preorder/${encodeURIComponent(releaseId)}`,
+      { method: 'PUT', body: JSON.stringify(body) },
+    ),
+
+  adminClearPreorder: (releaseId: string) =>
+    request<{ ok: boolean; releases: ShopRelease[] }>(
+      `/api/admin/shop/preorder/${encodeURIComponent(releaseId)}`,
+      { method: 'DELETE' },
     ),
 };

@@ -382,6 +382,8 @@ export interface PlantPayload {
  * all-in — so the margin is a console-only number (`margin` on the admin view).
  */
 export interface InvoiceSummary {
+  /** True while the order is a draft built by the studio. */
+  provisional?: boolean;
   number: string;
   issuedAt: string;
   status: string;
@@ -587,6 +589,24 @@ export interface ShopRelease {
   soldOut: boolean;
   lowStock: boolean;
   maxPerOrder: number;
+  /** False when the shelf is empty and it is not on pre-order. */
+  canBuy?: boolean;
+  /** Set when the record is sold before it is pressed. */
+  preorder?: { shipsOn: string; note?: string | null; setAt?: string | null; setBy?: string | null } | null;
+  preorderActive?: boolean;
+  /** What the card is allowed to claim: in_stock, preorder or sold_out. */
+  availability?: {
+    state: 'in_stock' | 'preorder' | 'sold_out';
+    label: string;
+    detail: string;
+    shipsOn: string | null;
+    note: string | null;
+    canBuy: boolean;
+    maxPerOrder: number;
+    countedAsStock: boolean;
+  };
+  availabilityLabel?: string;
+  availabilityDetail?: string;
   image: string;
   note: string;
 }
@@ -699,6 +719,8 @@ export interface AdminShop {
     stock: number;
     sold: number;
     lowStock: boolean;
+    /** Set when the release is being sold before it is pressed. */
+    preorder?: { shipsOn: string; note?: string | null } | null;
   }[];
 }
 

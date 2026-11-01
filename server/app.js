@@ -38,6 +38,9 @@ import {
   findShopOrder,
   placeShopOrder,
   setReleaseStock,
+  setPreorder,
+  clearPreorder,
+  shopCatalogueWithStock,
   shopConfig,
   shopOrderView,
   updateShopOrder,
@@ -1327,6 +1330,8 @@ function decorateOrder(order) {
           number: order.invoice.number,
           issuedAt: order.invoice.issuedAt,
           status: invoiceStatus(order),
+          /** A draft's invoice is provisional until the client confirms. */
+          provisional: Boolean(order.invoice.provisional) || order.status === 'draft',
           url: invoiceUrl(order),
         }
       : null,
@@ -1403,6 +1408,7 @@ api.get('/api/admin/events', requireAdmin, (req, res) => {
 });
 
 const ORDER_STATUSES = new Set([
+  'draft',
   'received',
   'confirmed',
   'forwarded',
@@ -2087,6 +2093,201 @@ api.patch('/api/admin/shop/orders/:id', requireAdmin, (req, res) => {
 api.patch('/api/admin/shop/stock/:releaseId', requireAdmin, (req, res) => {
   const result = setReleaseStock(req.params.releaseId, req.body?.stock);
   res.status(result.status).json(result.body);
+});
+
+/**
+ * Put a release on pre-order, or take it off.
+ *
+ * The console sets the day it is expected to ship; the storefront then says
+ * "Pre-order · ships 12 December" instead of inventing a stock count, and the
+ * checkout never touches a shelf quantity that does not exist.
+ */
+api.put('/api/admin/shop/preorder/:releaseId', requireAdmin, (req, res) => {
+  const result = setPreorder(req.params.releaseId, req.body ?? {}, 'management');
+  if (result.error) return res.status(400).json({ error: result.error });
+  res.json({ preorder: result.preorder, releases: shopCatalogueWithStock() });
+});
+
+api.delete('/api/admin/shop/preorder/:releaseId', requireAdmin, (req, res) => {
+  const result = clearPreorder(req.params.releaseId);
+  if (result.error) return res.status(404).json({ error: result.error });
+  res.json({ ok: true, releases: shopCatalogueWithStock() });
+});
+
+/**
+ * A draft order, built by the studio for a client.
+ *
+ * Most of the work happens on the phone: an artist describes the run, the desk
+ * agrees it in WhatsApp, and then someone has to type it into a form that asks
+ * the artist to do it themselves. This lets the desk build the order, price it
+ * with the same engine the client uses, attach files on the client's behalf, and
+ * hold it as a draft until the client confirms.
+ *
+ * A draft is deliberately not a commitment: no alerts fire, its invoice is
+ * marked provisional, and nothing can reach a plant (the deposit gate still
+ * applies once it becomes a real order).
+ */
+api.post('/api/admin/orders', requireAdmin, (req, res) => {
+  const body = req.body ?? {};
+  const client = body.client ?? {};
+  const configuration = body.configuration ?? {};
+
+  const name = text(client.name, 120);
+  const email = text(client.email, 160).toLowerCase();
+  const phone = text(client.phone, 40);
+  const country = text(client.country, 80) || 'Uganda';
+  const notes = text(client.notes, 1200);
+  const tracklist = text(body.tracklist, 2000);
+  const quantity = Number(configuration.quantity);
+
+  const errors = {};
+  if (name.length < 2) errors.name = 'Who is this run for?';
+  if (!EMAIL_RE.test(email)) errors.email = 'A contact email is needed for the invoice.';
+  if (!PHONE_RE.test(phone)) errors.phone = 'A WhatsApp number is needed for the hand-off.';
+
+  const quote = calculateQuote({
+    quantity,
+    vinylTypeId: text(configuration.vinylTypeId, 40) || 'lp_standard',
+    sleeveId: text(configuration.sleeveId, 40) || 'standard',
+    plantId: text(configuration.plantId, 40) || text(body.plantPreference, 40) || DEFAULT_PLANT_ID,
+    fxRate: FX_UGX_PER_USD,
+  });
+  if (!quote.valid) errors.configuration = quote.errors[0];
+
+  if (Object.keys(errors).length > 0) {
+    return res.status(422).json({ error: 'The draft needs a little more.', errors });
+  }
+
+  const db = db_.data;
+  const created = new Date().toISOString();
+  const order = {
+    id: newOrderId(db.orders.map((item) => item.id)),
+    createdAt: created,
+    status: 'draft',
+    source: 'studio',
+    demo: false,
+    client: {
+      name,
+      email,
+      phone,
+      country,
+      deliveryType: country === 'Uganda' ? 'uganda' : 'international',
+      deliveryAddress: text(client.deliveryAddress, 200) || null,
+      deliveryCity: text(client.deliveryCity, 120) || 'Kampala',
+      deliveryRegion: text(client.deliveryRegion, 120) || 'Central',
+      deliveryPostalCode: text(client.deliveryPostalCode, 32) || null,
+      recipientName: text(client.recipientName, 120) || name,
+      notes,
+    },
+    configuration: {
+      quantity: quote.quantity,
+      vinylTypeId: configuration.vinylTypeId || 'lp_standard',
+      sleeveId: configuration.sleeveId || 'standard',
+      plantId: quote.plant.id,
+    },
+    quote: {
+      vinylType: quote.vinylType,
+      sleeve: quote.sleeve,
+      plant: quote.plant,
+      factoryCost: quote.factoryCost,
+      managementFee: quote.managementFee,
+      total: quote.total,
+      deposit: quote.deposit,
+      balance: quote.balance,
+      perUnit: quote.perUnit,
+      fxRate: quote.fxRate,
+      totals: quote.totals,
+      lines: quote.lines,
+      cost: quote.cost,
+      costModel: 'plant-cost-v1',
+    },
+    payment: {
+      method: text(body.paymentMethod, 30) || 'mtn_momo',
+      payerPhone: phone,
+      payerName: name,
+      status: 'awaiting_deposit',
+    },
+    plantPreference: quote.plant.id,
+    files: {
+      audio: [],
+      artwork: [],
+      audioLink: text(body.audioLink, 500) || null,
+      artworkLink: text(body.artworkLink, 500) || null,
+    },
+    tracklist,
+    termsAcceptedAt: null,
+    statusHistory: [
+      {
+        status: 'draft',
+        at: created,
+        by: 'studio',
+        note: text(body.note, 300) || 'Draft built in the console for the client',
+      },
+    ],
+  };
+
+  db.orders.unshift(order);
+  const invoice = ensureInvoice(order, db);
+  db_.save();
+
+  res.status(201).json({ order: decorateOrder(order), invoice });
+});
+
+/**
+ * Attach a file (or a link) to an existing order, for the client.
+ *
+ * The bytes are uploaded with the same chunked pipeline the client uses; this is
+ * only the part that says "this file belongs to that order". It exists because
+ * "send me the WAV on WhatsApp" should end with the master in the order, not in
+ * a downloads folder.
+ */
+api.post('/api/admin/orders/:id/files', requireAdmin, (req, res) => {
+  const db = db_.data;
+  const order = db.orders.find((item) => item.id === req.params.id);
+  if (!order) return res.status(404).json({ error: 'Order not found.' });
+
+  const ids = Array.isArray(req.body?.uploadIds) ? req.body.uploadIds : [];
+  const attached = [];
+  const missing = [];
+
+  order.files ??= { audio: [], artwork: [], audioLink: null, artworkLink: null };
+  for (const kind of ['audio', 'artwork']) order.files[kind] ??= [];
+
+  for (const id of ids) {
+    const record = db.uploads.find((item) => item.id === id || item.storedName === id);
+    if (!record) {
+      missing.push(id);
+      continue;
+    }
+    const bucket = record.kind === 'artwork' ? 'artwork' : 'audio';
+    if (order.files[bucket].some((file) => file.id === record.id)) continue;
+    record.orderId = order.id;
+    order.files[bucket].push(record);
+    attached.push({ id: record.id, kind: bucket, originalName: record.originalName, size: record.size });
+  }
+
+  if (typeof req.body?.audioLink === 'string' && req.body.audioLink.trim()) {
+    order.files.audioLink = text(req.body.audioLink, 500);
+  }
+  if (typeof req.body?.artworkLink === 'string' && req.body.artworkLink.trim()) {
+    order.files.artworkLink = text(req.body.artworkLink, 500);
+  }
+
+  order.statusHistory = [
+    ...(order.statusHistory ?? []),
+    {
+      status: order.status,
+      at: new Date().toISOString(),
+      by: 'studio',
+      note: `${attached.length} file${attached.length === 1 ? '' : 's'} attached for the client`,
+    },
+  ];
+  db_.save();
+
+  if (attached.length === 0 && missing.length > 0) {
+    return res.status(404).json({ error: 'Those uploads no longer exist.', missing });
+  }
+  res.json({ order: decorateOrder(order), attached, missing });
 });
 
 api.get('/api/admin/orders/:id/invoice', requireAdmin, (req, res) => {
