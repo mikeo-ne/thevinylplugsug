@@ -13,6 +13,7 @@ import {
   emailPlantOrder,
   emailShopReceipt,
   notificationConfig,
+  sendTestAlert,
   unconfiguredMessage,
   whatsappTemplateSample,
 } from './notifications.js';
@@ -705,10 +706,40 @@ export async function autoForwardOrder(order, { trigger = 'deposit' } = {}) {
   return result;
 }
 
+/**
+ * Re-run a *test* alert that was recorded in the log.
+ *
+ * A test has no order behind it, so the normal retry path (`find the order, send
+ * its notification`) could only ever answer "order not found" — which is why five
+ * red rows from three days ago sat there forever with a message about a variable
+ * that has since been set. Retrying a test means sending the test again.
+ */
+async function retryTestEvent(event) {
+  const result = await sendTestAlert(event.channel);
+  if (result.status === 'delivered') {
+    return applyDelivery(event.id, { ...result, status: 'delivered' });
+  }
+  const fresh = db_.data.events.find((item) => item.id === event.id);
+  if (fresh) {
+    fresh.status = result.status === 'unconfigured' ? 'unconfigured' : 'failed';
+    fresh.error = result.error ?? 'unknown error';
+    fresh.attempts = (fresh.attempts ?? 0) + 1;
+    fresh.lastAttemptAt = new Date().toISOString();
+    db_.save();
+  }
+  return fresh ?? null;
+}
+
+const isTestEvent = (event) => !event.orderId && Boolean(event.payload?.test);
+
 export async function retryEvent(eventId) {
   const db = db_.data;
   const event = db.events.find((item) => item.id === eventId);
   if (!event) return null;
+
+  if (isTestEvent(event) && event.channel !== 'plant') {
+    return retryTestEvent(event);
+  }
 
   const order = db.orders.find((item) => item.id === event.orderId);
   if (event.channel === 'plant' && order) {
@@ -825,6 +856,30 @@ export async function retryFailedAlerts({
   const summary = { attempted: 0, delivered: 0, failed: 0, skipped: 0, results: [] };
 
   for (const event of candidates) {
+    // A recorded test has no order behind it; retrying it means sending it again.
+    if (isTestEvent(event) && event.channel !== 'plant') {
+      const env = alertEnvCheck().find((entry) => entry.channel === event.channel);
+      if (env && env.missing.length > 0) {
+        event.status = 'unconfigured';
+        event.error = unconfiguredMessage(event.channel, env.missing);
+        event.lastAttemptAt = new Date().toISOString();
+        summary.skipped += 1;
+        summary.results.push({ id: event.id, channel: event.channel, status: 'unconfigured' });
+        continue;
+      }
+      summary.attempted += 1;
+      const retried = await retryTestEvent(event);
+      summary.results.push({
+        id: event.id,
+        channel: event.channel,
+        status: retried?.status ?? 'failed',
+        error: retried?.error ?? null,
+      });
+      if (retried?.status === 'delivered') summary.delivered += 1;
+      else summary.failed += 1;
+      continue;
+    }
+
     const retail = Boolean(event.payload?.retail) || String(event.orderId ?? '').startsWith('7H-SHOP-');
     const order = retail
       ? db.shop?.orders?.find((item) => item.id === event.orderId)
